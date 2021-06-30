@@ -12,7 +12,13 @@ import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricType;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.TopicMetric;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.AbstractMetricSampler;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricSamplerOptions;
+import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.NewRelicBrokerQueryBin;
+import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.BrokerTopicCount;
+import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.KafkaSize;
+import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.NewRelicQueryBin;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.NewRelicQueryResult;
+import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.NewRelicTopicQueryBin;
+import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.TopicPartitionCount;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.kafka.common.Cluster;
@@ -27,7 +33,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.List;
 import java.util.Collections;
-import java.util.Objects;
 import java.util.HashMap;
 
 
@@ -60,6 +65,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     "%s config is required to have a query limit", NEWRELIC_QUERY_LIMIT_CONFIG));
         }
         MAX_SIZE = (Integer) configs.get(NEWRELIC_QUERY_LIMIT_CONFIG);
+        NewRelicQueryBin.setMaxSize(MAX_SIZE);
     }
 
     private void configureNewRelicAdapter(Map<String, ?> configs) {
@@ -139,7 +145,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
         List<NewRelicQueryBin> brokerQueryBins;
         try {
-            brokerQueryBins = assignToBins(brokerSizes, BrokerQueryBin.class);
+            brokerQueryBins = assignToBins(brokerSizes, NewRelicBrokerQueryBin.class);
 
             // Generate the queries based on the bins that PartitionCounts were assigned to
             List<String> topicQueries = getTopicQueries(brokerQueryBins);
@@ -175,8 +181,6 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         }
     }
 
-    // Remaining tasks -> use futures in queries +
-
     private void runPartitionQueries(Cluster cluster, int[] resultCounts) {
         // Get the sorted list of topics by their leader + follower count for each partition
         List<KafkaSize> topicSizes = getSortedTopicsByReplicaCount(cluster);
@@ -184,7 +188,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         // Use FFD algorithm (more info at method header) to assign topicSizes to queries
         List<NewRelicQueryBin> topicQueryBins;
         try {
-            topicQueryBins = assignToBins(topicSizes, TopicQueryBin.class);
+            topicQueryBins = assignToBins(topicSizes, NewRelicTopicQueryBin.class);
 
             // Generate the queries based on the bins that PartitionCounts were assigned to
             List<String> partitionQueries = getPartitionQueries(topicQueryBins);
@@ -219,245 +223,6 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         }
     }
 
-    abstract static class KafkaSize implements Comparable<KafkaSize> {
-        private int _size;
-
-        KafkaSize(int size) {
-            _size = size;
-        }
-
-        int getSize() {
-            return _size;
-        }
-
-        @Override
-        public int compareTo(KafkaSize other) {
-            return _size - other.getSize();
-        }
-
-        @Override
-        public String toString() {
-            return String.format("KafkaSize with size: %s", _size);
-        }
-    }
-
-    /**
-     * Used to store the number of brokers in each topic.
-     */
-    private static class BrokerSize extends KafkaSize {
-        private int _brokerId;
-
-        BrokerSize(int size, int brokerId) {
-            super(size);
-            _brokerId = brokerId;
-        }
-
-         int getBrokerId() {
-            return _brokerId;
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            if (this == other) {
-                return true;
-            }
-            if (other == null || getClass() != other.getClass()) {
-                return false;
-            }
-            BrokerSize otherSize = (BrokerSize) other;
-            return this.hashCode() == otherSize.hashCode();
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(_brokerId, getSize());
-        }
-
-        @Override
-        public String toString() {
-            return String.format("BrokerSize with brokerId %s and size: %s", _brokerId, getSize());
-        }
-    }
-
-    /**
-     * Used to pair topics together with their size.
-     * Note that size in this context refers to the number of
-     * leaders and replicas of this topic.
-     */
-    private static class TopicSize extends KafkaSize {
-        private String _topic;
-        private int _brokerId;
-        private boolean _isBrokerTopic;
-
-        private TopicSize(String topic, int size) {
-            super(size);
-            _topic = topic;
-            _isBrokerTopic = false;
-        }
-
-        private TopicSize(String topic, int size, int brokerId) {
-            super(size);
-            _topic = topic;
-            _brokerId = brokerId;
-            _isBrokerTopic = true;
-        }
-
-        private String getTopic() {
-            return _topic;
-        }
-
-        private int getBrokerId() {
-            return _brokerId;
-        }
-
-        private boolean getIsBrokerTopic() {
-            return _isBrokerTopic;
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            if (this == other) {
-                return true;
-            }
-            if (other == null || getClass() != other.getClass()) {
-                return false;
-            }
-            TopicSize topicSizeOther = (TopicSize) other;
-            return hashCode() == topicSizeOther.hashCode();
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(_topic, _brokerId, _isBrokerTopic, getSize());
-        }
-
-        @Override
-        public String toString() {
-            if (_isBrokerTopic) {
-                return String.format("TopicSize with topic %s and size: %s",
-                        _topic, getSize());
-            } else {
-                return String.format("TopicSize with brokerId %s, topic %s, and size: %s",
-                        _brokerId, _topic, getSize());
-            }
-        }
-    }
-
-    abstract static class NewRelicQueryBin {
-        private int _currentSize;
-        private List<KafkaSize> _sizes;
-
-        NewRelicQueryBin() {
-            _sizes = new ArrayList<>();
-            _currentSize = 0;
-        }
-
-        boolean addKafkaSize(KafkaSize newSize) {
-            int size = newSize.getSize();
-            if (_currentSize + size > MAX_SIZE) {
-                return false;
-            } else {
-                _currentSize += size;
-                _sizes.add(newSize);
-                return true;
-            }
-        }
-
-        List<KafkaSize> getSizes() {
-            return _sizes;
-        }
-
-        abstract String generateStringForQuery();
-    }
-
-    static class BrokerQueryBin extends NewRelicQueryBin {
-        BrokerQueryBin() {
-            super();
-        }
-
-        @Override
-        String generateStringForQuery() {
-            if (getSizes().size() == 0) {
-                return "";
-            } else {
-                // We want this to be comma separated list of brokers
-                // Example: "WHERE broker IN (broker1, broker2, ...) "
-                StringBuffer brokerBuffer = new StringBuffer();
-                brokerBuffer.append("WHERE broker IN (");
-
-                List<KafkaSize> sizes = getSizes();
-                for (int i = 0; i < sizes.size() - 1; i++) {
-                    BrokerSize brokerSize = (BrokerSize) sizes.get(i);
-                    brokerBuffer.append(String.format("%s, ", brokerSize.getBrokerId()));
-                }
-
-                // Handle the last broker and add in parentheses + space instead of comma to finish
-                BrokerSize brokerSize = (BrokerSize) sizes.get(sizes.size() - 1);
-                brokerBuffer.append(String.format("%s) ", brokerSize.getBrokerId()));
-
-                return brokerBuffer.toString();
-            }
-        }
-    }
-
-    static class TopicQueryBin extends NewRelicQueryBin {
-        TopicQueryBin() {
-            super();
-        }
-
-        /**
-         * Given the list of all topics in this bin,
-         * we generate a string of the topics separated by a comma and space
-         * @return - String of topics separated by comma and space w/ no trailing comma or space
-         */
-        @Override
-        String generateStringForQuery() {
-            ArrayList<TopicSize> topics = new ArrayList<>();
-            ArrayList<TopicSize> brokerTopics = new ArrayList<>();
-
-            for (KafkaSize size: getSizes()) {
-                TopicSize topicSize = (TopicSize) size;
-                if (topicSize.getIsBrokerTopic()) {
-                    brokerTopics.add(topicSize);
-                } else {
-                    topics.add(topicSize);
-                }
-            }
-            // We want a comma on all but the last element so we will handle the last one separately
-            // We want these topics to be in the format:
-            // "topic IN ('topic1', 'topic2', ...)"
-            StringBuffer topicBuffer = new StringBuffer();
-            if (topics.size() > 0) {
-                topicBuffer.append("topic IN (");
-
-                for (int i = 0; i < topics.size() - 1; i++) {
-                    topicBuffer.append(String.format("'%s', ", topics.get(i).getTopic()));
-                }
-                // Add in last element without a comma or space
-                topicBuffer.append(String.format("'%s')", topics.get(topics.size() - 1).getTopic()));
-            }
-
-            // We want to combine broker topics into the format
-            // "(topic = 'topic1' AND broker = brokerId1) OR (topic = 'topic2' AND broker = brokerId2) ..."
-            StringBuffer topicBrokerBuffer = new StringBuffer();
-            if (brokerTopics.size() > 0) {
-                if (topics.size() > 0) {
-                    topicBrokerBuffer.append(" OR ");
-                }
-                for (int i = 0; i < brokerTopics.size() - 1; i++) {
-                    topicBrokerBuffer.append(String.format("(topic = '%s' AND broker = %s) OR ",
-                            brokerTopics.get(i).getTopic(), brokerTopics.get(i).getBrokerId()));
-                }
-                // Add in last element without OR
-                topicBrokerBuffer.append(String.format("(topic = '%s' AND broker = %s)",
-                        brokerTopics.get(brokerTopics.size() - 1).getTopic(),
-                        brokerTopics.get(brokerTopics.size() - 1).getBrokerId()));
-            }
-
-            return topicBuffer + topicBrokerBuffer.toString();
-        }
-    }
-
     private ArrayList<KafkaSize> getSortedBrokersByTopicCount(Cluster cluster) {
         ArrayList<KafkaSize> brokerSizes = new ArrayList<>();
 
@@ -467,7 +232,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             for (PartitionInfo partition: partitions) {
                 topicsInNode.add(partition.topic());
             }
-            brokerSizes.add(new BrokerSize(topicsInNode.size(), node.id()));
+            brokerSizes.add(new BrokerTopicCount(topicsInNode.size(), node.id()));
         }
 
         Collections.sort(brokerSizes);
@@ -503,11 +268,11 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                 }
                 for (Map.Entry<Integer, Integer> entry: brokerToCount.entrySet()) {
                     if (entry.getValue() != 0) {
-                        topicSizes.add(new TopicSize(topic, entry.getValue(), entry.getKey()));
+                        topicSizes.add(new TopicPartitionCount(topic, entry.getValue(), entry.getKey()));
                     }
                 }
             } else {
-                topicSizes.add(new TopicSize(topic, size));
+                topicSizes.add(new TopicPartitionCount(topic, size));
             }
         }
 
