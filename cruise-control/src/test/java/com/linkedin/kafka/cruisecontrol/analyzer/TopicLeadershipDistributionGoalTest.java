@@ -21,14 +21,13 @@ import com.linkedin.kafka.cruisecontrol.monitor.ModelGeneration;
 import com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.Test;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC0;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC1;
@@ -50,13 +49,16 @@ public class TopicLeadershipDistributionGoalTest {
 
         // TopicLeadershipDistributionGoal assumes RackAwareGoal has already run.
         Goal rackAwareGoal = initializeGoal(new RackAwareGoal());
-        rackAwareGoal.optimize(clusterModel, Collections.emptySet(), new OptimizationOptions(Collections.emptySet()));
+        rackAwareGoal.optimize(
+                clusterModel,
+                Collections.emptySet(),
+                new OptimizationOptions(Collections.emptySet(), Collections.emptySet(), Collections.emptySet()));
 
         Goal goal = initializeGoal(new TopicLeadershipDistributionGoal());
         goal.optimize(
                 clusterModel,
-                new HashSet<Goal>() {{ add(rackAwareGoal); }},
-                new OptimizationOptions(Collections.emptySet()));
+                Set.of(rackAwareGoal),
+                new OptimizationOptions(Collections.emptySet(), Collections.emptySet(), Collections.emptySet()));
 
         Map<String, List<Partition>> partitionsByTopic = clusterModel.getPartitionsByTopic();
 
@@ -101,13 +103,16 @@ public class TopicLeadershipDistributionGoalTest {
 
         // TopicLeadershipDistributionGoal assumes RackAwareGoal has already run.
         Goal rackAwareGoal = initializeGoal(new RackAwareGoal());
-        rackAwareGoal.optimize(clusterModel, Collections.emptySet(), new OptimizationOptions(Collections.emptySet()));
+        rackAwareGoal.optimize(
+                clusterModel,
+                Collections.emptySet(),
+                new OptimizationOptions(Collections.emptySet(), Collections.emptySet(), Collections.emptySet()));
 
         Goal goal = initializeGoal(new TopicLeadershipDistributionGoal());
         goal.optimize(
                 clusterModel,
-                new HashSet<Goal>() {{ add(rackAwareGoal); }},
-                new OptimizationOptions(Collections.emptySet()));
+                Set.of(rackAwareGoal),
+                new OptimizationOptions(Collections.emptySet(), Collections.emptySet(), Collections.emptySet()));
 
         Map<Integer, Integer> topic0LeaderCountByBroker = new HashMap<>();
         for (Partition partition : clusterModel.getPartitionsByTopic().get(TOPIC0)) {
@@ -183,11 +188,8 @@ public class TopicLeadershipDistributionGoalTest {
     }
 
     private Goal initializeGoal(Goal goal) {
-        goal.configure(new HashMap<String, String>() {{
-            // These two need to be set but the goal doesn't actually use it so we're setting them to empty strings here
-            put(BOOTSTRAP_SERVERS_CONFIG, "");
-            put(ZOOKEEPER_CONNECT_CONFIG, "");
-        }});
+        // These two need to be set but the goal doesn't actually use it so we're setting them to empty strings here
+        goal.configure(Map.of(BOOTSTRAP_SERVERS_CONFIG, "", ZOOKEEPER_CONNECT_CONFIG, ""));
 
         return goal;
     }

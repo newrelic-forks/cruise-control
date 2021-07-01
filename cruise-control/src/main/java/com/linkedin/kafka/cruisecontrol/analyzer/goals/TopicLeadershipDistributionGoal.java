@@ -16,10 +16,8 @@ import com.linkedin.kafka.cruisecontrol.model.Partition;
 import com.linkedin.kafka.cruisecontrol.model.Rack;
 import com.linkedin.kafka.cruisecontrol.model.Replica;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -38,21 +36,14 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.MIN_NUM_
  * leader replicas on each non-excluded broker in the cluster is at most +1 for every topic (not every topic partition
  * count is perfectly divisible by every eligible broker count).
  *
- * This goal runs in two phases ({@link RebalancePhase#PER_RACK} and {@link RebalancePhase#PER_BROKER}) in order to
- * allow it to find a valid solution in the constrained case of:
- *      a) Running after the {@link RackAwareGoal}
- *      b) There being only 3 racks
- *      c) Most if not all topics are at RF=3
+ * This goal runs in two phases ({@link RebalancePhase#PER_RACK} and {@link RebalancePhase#PER_BROKER}). This helps to
+ * guarantee that a valid solution can be found when operating in conjunction with the {@link RackAwareGoal} or the
+ * {@link RackAwareDistributionGoal}.
  *
- * For this constrained case, we can expect each partition of each topic in the cluster to have a replica in each rack
- * after the {@link RackAwareGoal} finishes running.
- *
- * This means for a solution to be found, we must first distribute lead replicas of each topic as evenly amongst the
- * racks via {@link ActionType#LEADERSHIP_MOVEMENT} movements (as there will always be a replica for each partition
- * in the desired rack).
- *
- * Once lead replicas are evenly distributed amongst each rack, we can then work on evenly distributing lead
- * replicas amongst brokers via {@link ActionType#INTER_BROKER_REPLICA_MOVEMENT} movements.
+ * This goal will throw an {@link OptimizationFailureException} if it gets stuck trying to find a solution. However, due
+ * to the random nature of how how it selects which balancing actions to attempt, it is possible that the isn't
+ * impossible to satisfy but that it simply got itself stuck in a state in which it cannot find a valid next move to
+ * enact.
  */
 public class TopicLeadershipDistributionGoal extends AbstractGoal {
     private static final Logger LOG = LoggerFactory.getLogger(TopicLeadershipDistributionGoal.class);
@@ -70,6 +61,8 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
     private final Map<String, Integer> _targetNumLeadReplicasPerBrokerByTopic;
     private final Map<String, Map<Integer, Integer>> _numLeadReplicasByTopicByBrokerId;
+
+    private int _previousTotalDelta;
 
     public TopicLeadershipDistributionGoal() {
         super();
@@ -243,7 +236,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 return true;
             case PER_BROKER:
                 // The only previous phase is the PER_RACK phase, so we check that the topic is still balanced per rack.
-                return !isTopicUnbalancedPerRack(clusterModel, action.topic());
+                return isTopicBalancedPerRack(clusterModel, action.topic());
             default:
                 throw new IllegalStateException("Unknown rebalance phase: " + _rebalancePhase);
         }
@@ -253,6 +246,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
             throws OptimizationFailureException {
         _rebalancePhase = RebalancePhase.PER_RACK;
+        LOG.info("Entering initial PER_RACK phase");
 
         _allowedTopics = GoalUtils.topicsToRebalance(clusterModel, optimizationOptions.excludedTopics());
 
@@ -306,9 +300,11 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             _numLeadReplicasByTopicByRackId.put(topic, numLeadReplicasPerRack);
             _numLeadReplicasByTopicByBrokerId.put(topic, numLeadReplicasPerBroker);
 
-            LOG.debug("Targeting {}(+1) lead replicas per rack for topic {}", targetNumLeadReplicasPerRack, topic);
-            LOG.debug("Targeting {}(+1) lead replicas per broker for topic {}", targetNumLeadReplicasPerBroker, topic);
+            LOG.info("Targeting {}(+1) lead replicas per rack for topic {}", targetNumLeadReplicasPerRack, topic);
+            LOG.info("Targeting {}(+1) lead replicas per broker for topic {}", targetNumLeadReplicasPerBroker, topic);
         }
+
+        _previousTotalDelta = Integer.MAX_VALUE;
     }
 
     /**
@@ -320,14 +316,16 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
      * @param optimizationOptions Options to take into account during optimization.
      */
     @Override
-    protected void updateGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions) {
+    protected void updateGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
+            throws OptimizationFailureException {
+        ensureProgressBeingMade(clusterModel);
 
         switch (_rebalancePhase) {
             case PER_RACK:
                 boolean isBalancedPerRack = true;
 
                 for (String topic : _allowedTopics) {
-                    if (isTopicUnbalancedPerRack(clusterModel, topic)) {
+                    if (!isTopicBalancedPerRack(clusterModel, topic)) {
                         isBalancedPerRack = false;
                     }
                 }
@@ -335,13 +333,14 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 if (isBalancedPerRack) {
                     LOG.info("Transitioning from PER_RACK phase to PER_BROKER phase");
                     _rebalancePhase = RebalancePhase.PER_BROKER;
+                    _previousTotalDelta = Integer.MAX_VALUE;
                 }
                 break;
             case PER_BROKER:
                 boolean isBalancedPerBroker = true;
 
                 for (String topic : _allowedTopics) {
-                    if (isTopicUnbalancedPerBroker(topic)) {
+                    if (!isTopicBalancedPerBroker(topic)) {
                         isBalancedPerBroker = false;
                     }
                 }
@@ -354,6 +353,69 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             default:
                 throw new IllegalStateException("Unknown rebalance phase: " + _rebalancePhase);
         }
+    }
+
+    /**
+     * TODO
+     *
+     * @param clusterModel {@link ClusterModel}
+     * @throws OptimizationFailureException if no progress was made in the last
+     *                                      {@link AbstractGoal#optimize(ClusterModel, Set, OptimizationOptions)} loop
+     */
+    private void ensureProgressBeingMade(ClusterModel clusterModel) throws OptimizationFailureException {
+        int totalDelta = 0;
+
+        for (String topic : _allowedTopics) {
+            switch (_rebalancePhase) {
+                case PER_RACK:
+                    int targetPerRack = _targetNumLeadReplicasPerRackByTopic.get(topic);
+
+                    Set<String> rackIds = _allowedBrokerIds.stream()
+                            .map(b -> clusterModel.broker(b).rack().id())
+                            .collect(Collectors.toSet());
+
+                    for (String rackId : rackIds) {
+                        int count = _numLeadReplicasByTopicByRackId.get(topic).getOrDefault(rackId, 0);
+                        totalDelta += Math.abs(targetPerRack - count);
+                    }
+                    break;
+                case PER_BROKER:
+                    int targetPerBroker = _targetNumLeadReplicasPerBrokerByTopic.get(topic);
+
+                    for (int brokerId : _allowedBrokerIds) {
+                        int count = _numLeadReplicasByTopicByBrokerId.get(topic).getOrDefault(brokerId, 0);
+                        totalDelta += Math.abs(targetPerBroker - count);
+                    }
+                    break;
+                default:
+                    throw new IllegalStateException("Unrecognized rebalance phase: " + _rebalancePhase);
+            }
+        }
+
+        if (totalDelta >= _previousTotalDelta) {
+            StringBuilder s = new StringBuilder();
+
+            for (String topic : _allowedTopics) {
+                switch (_rebalancePhase) {
+                    case PER_RACK:
+                        if (!isTopicBalancedPerRack(clusterModel, topic)) {
+                            s.append(prettyPrintedLeadershipDistributionByRack(clusterModel, topic));
+                        }
+                        break;
+                    case PER_BROKER:
+                        if (!isTopicBalancedPerBroker(topic)) {
+                            s.append(prettyPrintedLeadershipDistributionByBroker(clusterModel, topic));
+                        }
+                        break;
+                    default:
+                        throw new IllegalStateException("Unrecognized rebalance phase: " + _rebalancePhase);
+                }
+            }
+
+            throw new OptimizationFailureException("Unable to solve for this goal; remaining imbalanced topics:\n" + s);
+        }
+
+        _previousTotalDelta = totalDelta;
     }
 
     @Override
@@ -375,13 +437,13 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 case PER_RACK:
                     LOG.trace("Re-balancing for broker {} in rack {} and topic {}", broker.id(), broker.rack().id(), topic);
 
-                    if (isTopicUnbalancedPerRack(clusterModel, topic)) {
+                    if (!isTopicBalancedPerRack(clusterModel, topic)) {
                         int numLeadReplicasInRack = _numLeadReplicasByTopicByRackId
                                 .get(topic)
                                 .getOrDefault(broker.rack().id(), 0);
 
                         int targetNumLeadReplicas = _targetNumLeadReplicasPerRackByTopic.get(topic);
-                        int numLeadReplicasToFlip =  numLeadReplicasInRack - targetNumLeadReplicas;
+                        int numLeadReplicasToFlip = numLeadReplicasInRack - targetNumLeadReplicas;
 
                         if (numLeadReplicasToFlip > 0) {
                             loseLeadReplicasForRack(
@@ -396,7 +458,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 case PER_BROKER:
                     LOG.trace("Re-balancing for broker {} and topic {}", broker.id(), topic);
 
-                    if (isTopicUnbalancedPerBroker(topic)) {
+                    if (!isTopicBalancedPerBroker(topic)) {
                         int numLeadReplicasToMove = leaderReplicas.size() - _targetNumLeadReplicasPerBrokerByTopic.get(topic);
 
                         if (numLeadReplicasToMove > 0) {
@@ -416,12 +478,13 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     }
 
     /**
-     * This method works similarly to {@link #isTopicUnbalancedPerBroker(String topic)} but on a per-rack basis instead
+     * This method works similarly to {@link #isTopicBalancedPerBroker(String topic)} but on a per-rack basis instead
      * of a per-broker basis.
-     * 
-     * @see #isTopicUnbalancedPerBroker(String) 
+     *
+     * @return true if topic is balanced per rack; false otherwise
+     * @see #isTopicBalancedPerBroker(String)
      */
-    private boolean isTopicUnbalancedPerRack(ClusterModel clusterModel, String topic) {
+    private boolean isTopicBalancedPerRack(ClusterModel clusterModel, String topic) {
         Map<String, Integer> numLeadReplicasByRackId = _numLeadReplicasByTopicByRackId.get(topic);
         Integer target = _targetNumLeadReplicasPerRackByTopic.get(topic);
 
@@ -433,11 +496,11 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             int numLeadReplicas = numLeadReplicasByRackId.getOrDefault(rackId, 0);
 
             if (numLeadReplicas < target || numLeadReplicas > target + 1) {
-                return true;
+                return false;
             }
         }
 
-        return false;
+        return true;
     }
 
     /**
@@ -451,7 +514,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
      * @param topic topic whose leadership distribution balance should be checked
      * @return true if topic leadership distribution still needs to be balanced; false otherwise
      */
-    private boolean isTopicUnbalancedPerBroker(String topic) {
+    private boolean isTopicBalancedPerBroker(String topic) {
         Map<Integer, Integer> numLeadReplicasByBrokerId = _numLeadReplicasByTopicByBrokerId.get(topic);
         int target = _targetNumLeadReplicasPerBrokerByTopic.get(topic);
 
@@ -459,11 +522,11 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             int numLeadReplicas = numLeadReplicasByBrokerId.getOrDefault(brokerId, 0);
 
             if (numLeadReplicas < target || numLeadReplicas > target + 1) {
-                return true;
+                return false;
             }
         }
 
-        return false;
+        return true;
     }
 
     private <T> T selectRandomFrom(Collection<T> collection) {
@@ -508,11 +571,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 List<Set<Broker>> tieredCandidateBrokers = new ArrayList<>();
                 tieredCandidateBrokers.add(primaryCandidateBrokers);
                 tieredCandidateBrokers.add(secondaryCandidateBrokers);
-
-                if (topic.equals("raw_logs_data")) {
-                    System.out.printf("Primary candidate brokers: %s%n", StringUtils.join(primaryCandidateBrokers, ","));
-                    System.out.printf("Secondary candidate brokers: %s%n", StringUtils.join(secondaryCandidateBrokers, ","));
-                }
 
                 for (Set<Broker> candidates : tieredCandidateBrokers) {
                     if (attemptRelinquishReplicaAction(
@@ -566,18 +624,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 Set<Broker> primaryCandidates = new HashSet<>();
                 Set<Broker> secondaryCandidates = new HashSet<>();
 
-//                List<Broker> followers = clusterModel.partition(leaderReplica.topicPartition()).followerBrokers();
-//
-//                for (Broker broker : followers) {
-//                    int numLeadReplicasInRack = numLeadReplicasByRackId.getOrDefault(broker.rack().id(), 0);
-//
-//                    if (numLeadReplicasInRack < targetNumLeadReplicasPerRack) {
-//                        primaryCandidates.add(broker);
-//                    } else if (numLeadReplicasInRack == targetNumLeadReplicasPerRack) {
-//                        secondaryCandidates.add(broker);
-//                    }
-//                }
-
                 for (int brokerId : _allowedBrokerIds) {
                     Broker broker = clusterModel.broker(brokerId);
                     int numLeadReplicasInRack = numLeadReplicasByRackId.getOrDefault(broker.rack().id(), 0);
@@ -599,7 +645,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                                     clusterModel, optimizedGoals, optimizationOptions, leaderReplica, candidates)
                             || attemptRelinquishReplicaAction(
                                     clusterModel, optimizedGoals, optimizationOptions, leaderReplica, candidates)
-                            // FIXME: Need more flexible candidates for relinquish replica action here
                     ) {
                         numMoves++;
                         break;
@@ -743,8 +788,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         return false;
     }
 
-    @SuppressWarnings("unused")
-    private void prettyPrintLeadershipDistributionByBroker(ClusterModel clusterModel, String topic) {
+    private String prettyPrintedLeadershipDistributionByBroker(ClusterModel clusterModel, String topic) {
         Map<Integer, Integer> leaderCountsByBrokerId = new HashMap<>();
 
         for (Partition p : clusterModel.getPartitionsByTopic().get(topic)) {
@@ -758,17 +802,18 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 .sorted(Integer::compareTo)
                 .collect(Collectors.toList());
 
-        System.out.printf("Leadership distribution by broker for %s:%n", topic);
+        StringBuilder s = new StringBuilder();
+
+        s.append(String.format("Leadership distribution by broker for %s:%n", topic));
 
         for (Integer brokerId : brokerIds) {
-            System.out.printf("\t%s: %s%n", brokerId, leaderCountsByBrokerId.get(brokerId));
+            s.append(String.format("\t%s: %s%n", brokerId, leaderCountsByBrokerId.get(brokerId)));
         }
 
-        System.out.println();
+        return s.toString();
     }
 
-    @SuppressWarnings("unused")
-    private void prettyPrintLeadershipDistributionByRack(ClusterModel clusterModel, String topic) {
+    private String prettyPrintedLeadershipDistributionByRack(ClusterModel clusterModel, String topic) {
         Map<String, Integer> numLeadReplicasByRack = new HashMap<>();
 
         for (Partition partition : clusterModel.getPartitionsByTopic().get(topic)) {
@@ -784,11 +829,15 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 .sorted()
                 .collect(Collectors.toList());
 
-        System.out.printf("Leadership distribution by rack for %s:%n", topic);
+        StringBuilder s = new StringBuilder();
+
+        s.append(String.format("Leadership distribution by rack for %s:%n", topic));
 
         for (String rackId : orderedRackIds) {
-            System.out.printf("\t%s: %s%n", rackId, numLeadReplicasByRack.get(rackId));
+            s.append(String.format("\t%s: %s%n", rackId, numLeadReplicasByRack.get(rackId)));
         }
+
+        return s.toString();
     }
 
     private String getReplicaSetString(ClusterModel clusterModel, Replica replica) {
