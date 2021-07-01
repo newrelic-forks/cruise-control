@@ -19,10 +19,6 @@ public final class NewRelicQuerySupplier {
         // Not called
     }
 
-    // Currently we are hardcoding this in -> later need to make it specific to whatever cluster
-    // this cruise control instance is running on
-    private static final String CLUSTER_NAME = "test-odd-wire-kafka";
-
     private static final HashMap<String, RawMetricType> BROKER_METRICS = new HashMap<>();
     private static final HashMap<String, RawMetricType> TOPIC_METRICS = new HashMap<>();
     private static final HashMap<String, RawMetricType> PARTITION_METRICS = new HashMap<>();
@@ -51,24 +47,24 @@ public final class NewRelicQuerySupplier {
             + "SINCE 1 minute ago "
             + "LIMIT MAX";
 
-    public static String brokerQuery() {
-        return brokerQueryFormat(generateFeatures(BROKER_METRICS));
+    public static String brokerQuery(String clusterName) {
+        return brokerQueryFormat(generateFeatures(BROKER_METRICS), clusterName);
     }
 
-    private static String brokerQueryFormat(String select) {
-        return String.format(BROKER_QUERY, select, CLUSTER_NAME);
+    private static String brokerQueryFormat(String select, String clusterName) {
+        return String.format(BROKER_QUERY, select, clusterName);
     }
 
-    public static String topicQuery(String brokerSelect) {
-        return topicQueryFormat(generateFeatures(TOPIC_METRICS), brokerSelect);
+    public static String topicQuery(String brokerSelect, String clusterName) {
+        return topicQueryFormat(generateFeatures(TOPIC_METRICS), brokerSelect, clusterName);
     }
 
-    private static String topicQueryFormat(String select, String brokerSelect) {
-        return String.format(TOPIC_QUERY, select, CLUSTER_NAME, brokerSelect);
+    private static String topicQueryFormat(String select, String brokerSelect, String clusterName) {
+        return String.format(TOPIC_QUERY, select, clusterName, brokerSelect);
     }
 
-    public static String partitionQuery(String whereClause) {
-        return String.format(PARTITION_QUERY, CLUSTER_NAME, whereClause);
+    public static String partitionQuery(String whereClause, String clusterName) {
+        return String.format(PARTITION_QUERY, clusterName, whereClause);
     }
 
     public static Map<String, RawMetricType> getBrokerMap() {
@@ -83,6 +79,12 @@ public final class NewRelicQuerySupplier {
         return PARTITION_METRICS;
     }
 
+    /**
+     * Generates the sequence of SELECT features we want to use in our queries
+     * based on which metrics we are looking to collect in that query.
+     * @param metrics - List of queryLabels mapped to their metric types
+     * @return - Feature string of the format: "max(feature1), max(feature2), ... max(featureN)"
+     */
     private static String generateFeatures(Map<String, RawMetricType> metrics) {
         StringBuffer buffer = new StringBuffer();
 

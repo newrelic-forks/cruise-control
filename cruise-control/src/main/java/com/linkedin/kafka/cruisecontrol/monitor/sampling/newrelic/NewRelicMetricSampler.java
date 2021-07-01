@@ -43,6 +43,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     static final String NEWRELIC_API_KEY_CONFIG = "newrelic.api.key";
     static final String NEWRELIC_ACCOUNT_ID_CONFIG = "newrelic.account.id";
     static final String NEWRELIC_QUERY_LIMIT_CONFIG = "newrelic.query.limit";
+    static final String CLUSTER_NAME_CONFIG = "newrelic.cell.name";
 
     // We make this protected so we can set it during the tests
     protected NewRelicAdapter _newRelicAdapter;
@@ -50,6 +51,10 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
     // NRQL Query limit
     private static int MAX_SIZE;
+
+    // Currently we are hardcoding this in -> later need to make it specific to whatever cluster
+    // this cruise control instance is running on
+    private static String CLUSTER_NAME = "";
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -65,6 +70,12 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         }
         MAX_SIZE = (Integer) configs.get(NEWRELIC_QUERY_LIMIT_CONFIG);
         NewRelicQueryBin.setMaxSize(MAX_SIZE);
+
+        if (!configs.containsKey(CLUSTER_NAME_CONFIG)) {
+            throw new ConfigException(String.format(
+                    "%s config is required to have the cluster name", CLUSTER_NAME_CONFIG));
+        }
+        CLUSTER_NAME = (String) configs.get(CLUSTER_NAME_CONFIG);
     }
 
     private void configureNewRelicAdapter(Map<String, ?> configs) {
@@ -74,11 +85,12 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     "%s config is required to have an endpoint", NEWRELIC_API_KEY_CONFIG));
         }
 
-        final String apiKey = (String) configs.get(NEWRELIC_API_KEY_CONFIG);
+        final String apiKey = (String) System.getenv("NR_STAGING_ACCOUNT_1_API_KEY");
         if (apiKey == null) {
             throw new ConfigException(String.format(
                     "%s config is required to have an API Key", NEWRELIC_API_KEY_CONFIG));
         }
+
         if (!configs.containsKey(NEWRELIC_ACCOUNT_ID_CONFIG)) {
             throw new ConfigException(String.format(
                     "%s config is required to have an account ID", NEWRELIC_ACCOUNT_ID_CONFIG));
@@ -120,10 +132,11 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      */
     private void runBrokerQueries(ResultCounts counts) {
         // Run our broker query first
-        final String brokerQuery = NewRelicQuerySupplier.brokerQuery();
+        final String brokerQuery = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
         final List<NewRelicQueryResult> brokerResults;
 
         try {
+            LOGGER.info("Broker Query: {}", brokerQuery);
             brokerResults = _newRelicAdapter.runQuery(brokerQuery);
         } catch (IOException e) {
             // Note that we could throw an exception here, but we don't want
@@ -169,7 +182,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
                 try {
                     // FIXME
-                    System.out.printf("Topic Query: %s%n", query);
+                    LOGGER.info("Topic Query: {}", query);
                     queryResults = _newRelicAdapter.runQuery(query);
                 } catch (IOException e) {
                     // Note that we could throw an exception here, but we don't want
@@ -220,8 +233,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                 final List<NewRelicQueryResult> queryResults;
 
                 try {
-                    // FIXME
-                    System.out.printf("Partition Query: %s%n", query);
+                    LOGGER.info("Partition Query: {}", query);
                     queryResults = _newRelicAdapter.runQuery(query);
                 } catch (IOException e) {
                     // Note that we could throw an exception here, but we don't want
@@ -280,12 +292,6 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      * but no leader, it will not count for that topic being in the other broker.
      * We do make the assumption that no one broker will have more than MAX_SIZE
      * topics in it.
-     * // FIXME -> Look at a really small topic with a few partitions and see
-     * // FIXME -> if it is present in other brokers when only its replica is
-     * // FIXME -> in the other broker. If so, we need to handle this case because
-     * // FIXME -> we will otherwise be under-counting the number of topics per broker
-     * // FIXME -> because there will be a small set of topics which show up in other brokers
-     * // FIXME -> which cruise control thinks they aren't in.
      * @param cluster - Cluster object containing information metadata this cluster.
      * @return - Returns a sorted by count list of KafkaSize objects which store the count of
      * topics in each broker.
@@ -418,10 +424,10 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         // When every broker is in one bin, we don't need to include the "WHERE broker IN"
         // and can just select every broker
         if (queryBins.size() == 1) {
-            queries.add(NewRelicQuerySupplier.topicQuery(""));
+            queries.add(NewRelicQuerySupplier.topicQuery("", CLUSTER_NAME));
         } else {
             for (NewRelicQueryBin queryBin : queryBins) {
-                queries.add(NewRelicQuerySupplier.topicQuery(queryBin.generateStringForQuery()));
+                queries.add(NewRelicQuerySupplier.topicQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
             }
         }
         return queries;
@@ -438,7 +444,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     private List<String> getPartitionQueries(List<NewRelicQueryBin> queryBins) {
         List<String> queries = new ArrayList<>();
         for (NewRelicQueryBin queryBin: queryBins) {
-            queries.add(NewRelicQuerySupplier.partitionQuery(queryBin.generateStringForQuery()));
+            queries.add(NewRelicQuerySupplier.partitionQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
         }
         return queries;
     }

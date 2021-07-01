@@ -60,6 +60,8 @@ public class NewRelicMetricSamplerTest {
     private NewRelicMetricSampler _newRelicMetricSampler;
     private NewRelicAdapter _newRelicAdapter;
 
+    private static String CLUSTER_NAME = "kafka-test-cluster";
+
     /**
      * Set up mocks
      */
@@ -70,12 +72,24 @@ public class NewRelicMetricSamplerTest {
     }
 
     @Test(expected = ConfigException.class)
+    public void testNoClusterNameProvided() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        addCapacityConfig(config);
+        config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
+        config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
+        config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
+        config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
+        _newRelicMetricSampler.configure(config);
+    }
+
+    @Test(expected = ConfigException.class)
     public void testNoEndpointProvided() throws Exception {
         Map<String, Object> config = new HashMap<>();
         addCapacityConfig(config);
         config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
         config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
         config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
+        config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
         _newRelicMetricSampler.configure(config);
     }
 
@@ -86,6 +100,7 @@ public class NewRelicMetricSamplerTest {
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
         config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
         config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
+        config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
         _newRelicMetricSampler.configure(config);
     }
 
@@ -96,6 +111,7 @@ public class NewRelicMetricSamplerTest {
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
         config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
         config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
+        config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
         _newRelicMetricSampler.configure(config);
     }
 
@@ -106,6 +122,7 @@ public class NewRelicMetricSamplerTest {
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
         config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
         config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
+        config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
         _newRelicMetricSampler.configure(config);
     }
 
@@ -122,6 +139,7 @@ public class NewRelicMetricSamplerTest {
 
         ArrayList<Integer> partitions = new ArrayList<>();
         partitions.add(3);
+        //partitions.add(5);
         partitions.add(1);
 
         setUp();
@@ -195,26 +213,39 @@ public class NewRelicMetricSamplerTest {
         config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
         config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
         config.put(NEWRELIC_QUERY_LIMIT_CONFIG, queryLimit);
+        config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
     }
 
     private void setupNewRelicAdapterMock(List<NewRelicQueryResult> brokerResults,
                                           List<NewRelicQueryResult> topicResults,
                                           List<NewRelicQueryResult> partitionResults) throws IOException {
-            expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery())))
+            expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME))))
                     .andReturn(brokerResults);
 
-            String beforeTopic = "FROM KafkaBrokerTopicStats SELECT max\\(messagesInPerSec\\), max\\(bytesInPerSec\\), "
-                    + "max\\(bytesOutPerSec\\), max\\(totalProduceRequestsPerSec\\), "
-                    + "max\\(totalFetchRequestsPerSec\\) WHERE cluster = '.*'";
-            String afterTopic = " AND topic is NOT NULL FACET broker, topic SINCE 1 minute ago LIMIT MAX";
-            String topicMatcher = beforeTopic + ".*" + afterTopic;
+            String beforeTopicRegex = String.format("FROM KafkaBrokerTopicStats SELECT max\\(messagesInPerSec\\), "
+                    + "max\\(bytesInPerSec\\), max\\(bytesOutPerSec\\), max\\(totalProduceRequestsPerSec\\), "
+                    + "max\\(totalFetchRequestsPerSec\\) WHERE cluster = '%s'", CLUSTER_NAME);
+            String afterTopicRegex = "AND topic is NOT NULL FACET broker, topic SINCE 1 minute ago LIMIT MAX";
+            String topicRegex = "(( WHERE broker IN \\((\\d+, )*\\d+\\) )|\\s)";
+            // the middle can be either " " or "WHERE broker IN (1, 2, ... 0)
+            String topicMatcher = beforeTopicRegex + topicRegex + afterTopicRegex;
             expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
                     .andReturn(topicResults).atLeastOnce();
 
-            String beforePartition = "FROM Metric SELECT max\\(kafka_log_Log_Value_Size\\) "
-                    + "WHERE entity.name = '.*' WHERE";
-            String afterPartition = " FACET broker, topic, partition SINCE 1 minute ago LIMIT MAX";
-            String partitionMatcher = beforePartition + ".*" + afterPartition;
+            String beforePartitionRegex = String.format("FROM Metric SELECT max\\(kafka_log_Log_Value_Size\\) "
+                    + "WHERE entity.name = '%s' WHERE ", CLUSTER_NAME);
+            String afterPartitionRegex = "FACET broker, topic, partition SINCE 1 minute ago LIMIT MAX";
+            // regex portion can be 1. "topic IN ('topic1', 'topic2', ... 'topicN') "
+            //                      2. "topic IN ('topic1', 'topic2', ... 'topicN')
+            //                              OR (topic = 'brokerTopic1' AND broker = 1)...
+            //                              OR (topic = 'brokerTopicN' AND broker = N) "
+            //                      3. "(topic = 'brokerTopic1' AND broker = 1) OR ...
+            //                              (topic = 'brokerTopicN' AND broker = N) "
+            String partitionRegex = "((topic IN \\(('[\\w\\-]*', )*'[\\w\\-]*'\\) )"
+                    + "|(topic IN \\(('[\\w\\-]*', )*'[\\w\\-]*'\\) (OR \\(topic = '[\\w\\-]+' "
+                    + "AND broker = \\d+\\) )+)|((\\(topic = '[\\w\\-]+' AND broker = \\d+\\) "
+                    + "OR )*\\(topic = '[\\w\\-]+' AND broker = \\d+\\) ))";
+            String partitionMatcher = beforePartitionRegex + partitionRegex + afterPartitionRegex;
             expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
                     .andReturn(partitionResults).atLeastOnce();
     }

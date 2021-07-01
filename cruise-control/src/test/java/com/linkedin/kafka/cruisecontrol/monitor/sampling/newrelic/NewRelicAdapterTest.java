@@ -26,9 +26,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class NewRelicAdapterTest extends LocalServerTestBase {
+    private static String CLUSTER_NAME = "kafka-test-cluster";
+
     @Test
     public void testBrokerQuery() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery();
+        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -72,7 +74,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test
     public void testTopicQuery() throws Exception {
-        String query = NewRelicQuerySupplier.topicQuery("");
+        String query = NewRelicQuerySupplier.topicQuery("", CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -115,7 +117,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test
     public void testPartitionQuery() throws Exception {
-        String query = NewRelicQuerySupplier.partitionQuery("TestTopic");
+        String query = NewRelicQuerySupplier.partitionQuery("TestTopic", CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -156,7 +158,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test(expected = IOException.class)
     public void testFailureResponseWith403Code() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery();
+        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -174,7 +176,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test(expected = IOException.class)
     public void testEmptyResponse() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery();
+        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -193,7 +195,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test(expected = IOException.class)
     public void testInvalidJSONResponse() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery();
+        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -214,7 +216,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
     // new metrics are added which will be the case given that the size of results is 0
     @Test
     public void testEmptyResults() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery();
+        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
