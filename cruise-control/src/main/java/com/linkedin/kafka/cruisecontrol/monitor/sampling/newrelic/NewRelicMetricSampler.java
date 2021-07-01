@@ -5,7 +5,6 @@
 package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic;
 
 import com.linkedin.cruisecontrol.common.config.ConfigException;
-import com.linkedin.kafka.cruisecontrol.exception.SamplingException;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.BrokerMetric;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.PartitionMetric;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricType;
@@ -18,7 +17,7 @@ import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.KafkaSiz
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.NewRelicQueryBin;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.NewRelicQueryResult;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.NewRelicTopicQueryBin;
-import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.TopicPartitionCount;
+import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.TopicReplicaCount;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.kafka.common.Cluster;
@@ -91,29 +90,35 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
     }
 
-    // This function will run all our queries using NewRelicAdapter
-    // Note that under the current implementation of this class, we assume that no topic will have
-    // more than MAX_SIZE number of replicas in any one broker
-    // We also assume no cluster has more than MAX_SIZE brokers
+    /**
+     * Runs the broker queries, then the topic level queries, then the partition level queries and adds
+     * those metrics to be processed.
+     * @param metricSamplerOptions Object that encapsulates all the options to be used for sampling metrics.
+     * @return - Returns the number of metrics that were added.
+     */
     @Override
-    protected int retrieveMetricsForProcessing(MetricSamplerOptions metricSamplerOptions) throws SamplingException {
-        // FIXME
-        int[] resultCounts = new int[]{0, 0};
+    protected int retrieveMetricsForProcessing(MetricSamplerOptions metricSamplerOptions) {
+        ResultCounts counts = new ResultCounts();
 
         // Run our broker level queries
-        runBrokerQuery(resultCounts);
+        runBrokerQueries(counts);
 
         // Run topic level queries
-        runTopicQueries(metricSamplerOptions.cluster(), resultCounts);
+        runTopicQueries(metricSamplerOptions.cluster(), counts);
 
         // Run partition level queries
-        runPartitionQueries(metricSamplerOptions.cluster(), resultCounts);
+        runPartitionQueries(metricSamplerOptions.cluster(), counts);
 
-        LOGGER.info("Added {} metric values. Skipped {} invalid query results.", resultCounts[0], resultCounts[1]);
-        return resultCounts[0];
+        LOGGER.info("Added {} metric values. Skipped {} invalid query results.",
+                counts.getMetricsAdded(), counts.getResultsSkipped());
+        return counts.getMetricsAdded();
     }
 
-    private void runBrokerQuery(int[] resultCounts) throws SamplingException {
+    /**
+     * Run the NRQL queries to get our broker level stats.
+     * @param counts - Keeps track of the metrics added and the results skipped.
+     */
+    private void runBrokerQueries(ResultCounts counts) {
         // Run our broker query first
         final String brokerQuery = NewRelicQuerySupplier.brokerQuery();
         final List<NewRelicQueryResult> brokerResults;
@@ -121,25 +126,33 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         try {
             brokerResults = _newRelicAdapter.runQuery(brokerQuery);
         } catch (IOException e) {
-            LOGGER.error("Error when attempting to query NRQL for metrics.", e);
-            //throw new SamplingException("Could not query metrics from NRQL.");
+            // Note that we could throw an exception here, but we don't want
+            // to stop trying all future queries because this one query
+            // failed to run
+            LOGGER.error("Error when attempting to query NRQL for broker metrics.", e);
             return;
         }
 
         for (NewRelicQueryResult result : brokerResults) {
             try {
-                resultCounts[0] += addBrokerMetrics(result);
+                counts.addMetricsAdded(addBrokerMetrics(result));
             } catch (InvalidNewRelicResultException e) {
                 // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
                 // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
                 // this check here anyway to be safe
                 LOGGER.trace("Invalid query result received from New Relic for query {}", brokerQuery, e);
-                resultCounts[1]++;
+                counts.addResultsSkipped(1);
             }
         }
     }
 
-    private void runTopicQueries(Cluster cluster, int[] resultCounts) {
+    /**
+     * Create a semi-optimal solution to the number of topic level queries
+     * to run to NRQL which are split up by different brokers and runs those queries.
+     * @param cluster - Cluster object containing information metadata this cluster.
+     * @param counts - Keeps track of the metrics added and the results skipped.
+     */
+    private void runTopicQueries(Cluster cluster, ResultCounts counts) {
         // Get the sorted list of brokers by their topic counts
         List<KafkaSize> brokerSizes = getSortedBrokersByTopicCount(cluster);
 
@@ -147,31 +160,34 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         try {
             brokerQueryBins = assignToBins(brokerSizes, NewRelicBrokerQueryBin.class);
 
-            // Generate the queries based on the bins that PartitionCounts were assigned to
+            // Generate the queries based on the bins that TopicCounts were assigned to
             List<String> topicQueries = getTopicQueries(brokerQueryBins);
 
-            // Run the partition queries
+            // Run the topic queries
             for (String query: topicQueries) {
                 final List<NewRelicQueryResult> queryResults;
 
                 try {
+                    // FIXME
                     System.out.printf("Topic Query: %s%n", query);
                     queryResults = _newRelicAdapter.runQuery(query);
                 } catch (IOException e) {
+                    // Note that we could throw an exception here, but we don't want
+                    // to stop trying all future queries because this one query
+                    // failed to run
                     LOGGER.error("Error when attempting to query NRQL for metrics.", e);
-                    //throw new SamplingException("Could not query metrics from NRQL.");
                     continue;
                 }
 
                 for (NewRelicQueryResult result : queryResults) {
                     try {
-                        resultCounts[0] += addTopicMetrics(result);
+                        counts.addMetricsAdded(addTopicMetrics(result));
                     } catch (InvalidNewRelicResultException e) {
                         // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
                         // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
                         // this check here anyway to be safe
                         LOGGER.trace("Invalid query result received from New Relic for topic query {}", query, e);
-                        resultCounts[1]++;
+                        counts.addResultsSkipped(1);
                     }
                 }
             }
@@ -181,7 +197,13 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         }
     }
 
-    private void runPartitionQueries(Cluster cluster, int[] resultCounts) {
+    /**
+     * Create a semi-optimal solution to the number of partition level queries
+     * to run to NRQL which are split up by different brokers and runs those queries.
+     * @param cluster - Cluster object containing information metadata this cluster.
+     * @param counts - Keeps track of the metrics added and the results skipped.
+     */
+    private void runPartitionQueries(Cluster cluster, ResultCounts counts) {
         // Get the sorted list of topics by their leader + follower count for each partition
         List<KafkaSize> topicSizes = getSortedTopicsByReplicaCount(cluster);
 
@@ -198,23 +220,26 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                 final List<NewRelicQueryResult> queryResults;
 
                 try {
+                    // FIXME
                     System.out.printf("Partition Query: %s%n", query);
                     queryResults = _newRelicAdapter.runQuery(query);
                 } catch (IOException e) {
+                    // Note that we could throw an exception here, but we don't want
+                    // to stop trying all future queries because this one query
+                    // failed to run
                     LOGGER.error("Error when attempting to query NRQL for metrics.", e);
-                    //throw new SamplingException("Could not query metrics from NRQL.");
                     continue;
                 }
 
                 for (NewRelicQueryResult result : queryResults) {
                     try {
-                        resultCounts[0] += addPartitionMetrics(result);
+                        counts.addMetricsAdded(addPartitionMetrics(result));
                     } catch (InvalidNewRelicResultException e) {
                         // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
                         // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
                         // this check here anyway to be safe
                         LOGGER.trace("Invalid query result received from New Relic for partition query {}", query, e);
-                        resultCounts[1]++;
+                        counts.addResultsSkipped(1);
                     }
                 }
             }
@@ -223,6 +248,48 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         }
     }
 
+    /**
+     * Used to keep track of metrics added and results skipped
+     * throughout broker, topic, and partition queries.
+     */
+    private static class ResultCounts {
+        private int _metricsAdded;
+        private int _resultsSkipped;
+
+        private void addMetricsAdded(int addedMetrics) {
+            _metricsAdded += addedMetrics;
+        }
+
+        private void addResultsSkipped(int resultsSkipped) {
+            _resultsSkipped += resultsSkipped;
+        }
+
+        private int getMetricsAdded() {
+            return _metricsAdded;
+        }
+
+        private int getResultsSkipped() {
+            return _resultsSkipped;
+        }
+    }
+
+    /**
+     * Goes through each broker in the cluster and
+     * gets the number of topics in that broker sorted from least to greatest.
+     * Note that if a topic has a replica in another broker,
+     * but no leader, it will not count for that topic being in the other broker.
+     * We do make the assumption that no one broker will have more than MAX_SIZE
+     * topics in it.
+     * // FIXME -> Look at a really small topic with a few partitions and see
+     * // FIXME -> if it is present in other brokers when only its replica is
+     * // FIXME -> in the other broker. If so, we need to handle this case because
+     * // FIXME -> we will otherwise be under-counting the number of topics per broker
+     * // FIXME -> because there will be a small set of topics which show up in other brokers
+     * // FIXME -> which cruise control thinks they aren't in.
+     * @param cluster - Cluster object containing information metadata this cluster.
+     * @return - Returns a sorted by count list of KafkaSize objects which store the count of
+     * topics in each broker.
+     */
     private ArrayList<KafkaSize> getSortedBrokersByTopicCount(Cluster cluster) {
         ArrayList<KafkaSize> brokerSizes = new ArrayList<>();
 
@@ -240,6 +307,16 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         return brokerSizes;
     }
 
+    /**
+     * We go through each topic in the cluster and get the replica count that that
+     * topic has in sorted order from least to greatest.
+     * Note that if a topic has more replicas than MAX_SIZE, we split that topic
+     * into its broker, topic combination and get the replica count for that
+     * grouped object because otherwise we will not be able to query for that.
+     * @param cluster - Cluster object containing information metadata this cluster.
+     * @return - Returns a sorted by count list of KafkaSize objects which store the count of
+     * replicas in each topic (or potentially topic/broker combination).
+     */
     private ArrayList<KafkaSize> getSortedTopicsByReplicaCount(Cluster cluster) {
         Set<String> topics = cluster.topics();
 
@@ -268,11 +345,11 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                 }
                 for (Map.Entry<Integer, Integer> entry: brokerToCount.entrySet()) {
                     if (entry.getValue() != 0) {
-                        topicSizes.add(new TopicPartitionCount(topic, entry.getValue(), entry.getKey()));
+                        topicSizes.add(new TopicReplicaCount(topic, entry.getValue(), entry.getKey()));
                     }
                 }
             } else {
-                topicSizes.add(new TopicPartitionCount(topic, size));
+                topicSizes.add(new TopicReplicaCount(topic, size));
             }
         }
 
@@ -281,6 +358,21 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         return topicSizes;
     }
 
+    /**
+     * Our problem here is the bin packing problem (see https://en.wikipedia.org/wiki/Bin_packing_problem)
+     * and the algorithm that we used to solve this problem is the First Fit Decreasing (FFD) algorithm
+     * (see https://www.ics.uci.edu/~goodrich/teach/cs165/notes/BinPacking.pdf).
+     * Using the first fit decreasing algorithm, we assign the different KafkaSize objects to bins
+     * and return the final bin arrangement we were able to find.
+     * @param kafkaSizes - List of KafkaSize which we want to arrange into different bins.
+     * @param binType - The type of bin we want to put our size objects into.
+     * @return - The bin arrangements which we found using the FFD algorithm. Note that this
+     * solution may not be optimal, but finding the optimal solution to this problem is NP-Complete.
+     * @throws InstantiationException - If the binType we passed in could not be successfully
+     * initialized we will throw this exception.
+     * @throws IllegalAccessException - If we don't have access to the binType we want to use,
+     * we will throw this exception.
+     */
     private List<NewRelicQueryBin> assignToBins(List<KafkaSize> kafkaSizes, Class<?> binType)
             throws InstantiationException, IllegalAccessException {
         List<NewRelicQueryBin> queryBins = new ArrayList<>();
@@ -313,6 +405,36 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         return queryBins;
     }
 
+    /**
+     * Given the set of bins that we found, we generate the queries we can use
+     * to query NRQL for the topic level stats that we want. There will be one
+     * query for each of the queryBins which we pass in to this object.
+     * @param queryBins - Bins that we are converting into queries.
+     * @return - List of strings to run as queries to NRQL which will output
+     * the data we want on a topic level.
+     */
+    private List<String> getTopicQueries(List<NewRelicQueryBin> queryBins) {
+        List<String> queries = new ArrayList<>();
+        // When every broker is in one bin, we don't need to include the "WHERE broker IN"
+        // and can just select every broker
+        if (queryBins.size() == 1) {
+            queries.add(NewRelicQuerySupplier.topicQuery(""));
+        } else {
+            for (NewRelicQueryBin queryBin : queryBins) {
+                queries.add(NewRelicQuerySupplier.topicQuery(queryBin.generateStringForQuery()));
+            }
+        }
+        return queries;
+    }
+
+    /**
+     * Given the set of bins that we found, we generate the queries we can use
+     * to query NRQL for the partition level stats that we want. There will be one
+     * query for each of the queryBins which we pass in to this object.
+     * @param queryBins - Bins that we are converting into queries.
+     * @return - List of strings to run as queries to NRQL which will output
+     * the data we want on a partition level.
+     */
     private List<String> getPartitionQueries(List<NewRelicQueryBin> queryBins) {
         List<String> queries = new ArrayList<>();
         for (NewRelicQueryBin queryBin: queryBins) {
@@ -321,14 +443,16 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         return queries;
     }
 
-    private List<String> getTopicQueries(List<NewRelicQueryBin> queryBins) {
-        List<String> queries = new ArrayList<>();
-        for (NewRelicQueryBin queryBin: queryBins) {
-            queries.add(NewRelicQuerySupplier.topicQuery(queryBin.generateStringForQuery()));
-        }
-        return queries;
-    }
-
+    /**
+     * Adds all the queryResults which were passed in to be processed
+     * as BrokerMetrics.
+     * @param queryResult - NRQL query result which should be from a broker
+     *                    level query.
+     * @return - Number of metrics we were able to add successfully from this
+     * query result.
+     * @throws InvalidNewRelicResultException - If the metric
+     * is of invalid type, we will throw this exception.
+     */
     private int addBrokerMetrics(NewRelicQueryResult queryResult)
             throws InvalidNewRelicResultException {
         int brokerID = queryResult.getBrokerID();
@@ -343,6 +467,16 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         return metricsAdded;
     }
 
+    /**
+     * Adds all the queryResults which were passed in to be processed
+     * as TopicMetrics.
+     * @param queryResult - NRQL query result which should be from a topic
+     *                    level query.
+     * @return - Number of metrics we were able to add successfully from this
+     * query result.
+     * @throws InvalidNewRelicResultException - If the metric
+     * is of invalid type, we will throw this exception.
+     */
     private int addTopicMetrics(NewRelicQueryResult queryResult)
             throws InvalidNewRelicResultException {
         int brokerID = queryResult.getBrokerID();
@@ -358,6 +492,16 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         return metricsAdded;
     }
 
+    /**
+     * Adds all the queryResults which were passed in to be processed
+     * as PartitionMetrics.
+     * @param queryResult - NRQL query result which should be from a partition
+     *                    level query.
+     * @return - Number of metrics we were able to add successfully from this
+     * query result.
+     * @throws InvalidNewRelicResultException - If the metric
+     * is of invalid type, we will throw this exception.
+     */
     private int addPartitionMetrics(NewRelicQueryResult queryResult)
             throws InvalidNewRelicResultException {
         int brokerID = queryResult.getBrokerID();

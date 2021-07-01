@@ -18,15 +18,15 @@ public class NewRelicTopicQueryBin extends NewRelicQueryBin {
      */
     @Override
     public String generateStringForQuery() {
-        ArrayList<TopicPartitionCount> topics = new ArrayList<>();
-        ArrayList<TopicPartitionCount> brokerTopics = new ArrayList<>();
+        ArrayList<TopicReplicaCount> topics = new ArrayList<>();
+        ArrayList<TopicReplicaCount> brokerTopics = new ArrayList<>();
 
         for (KafkaSize size: getSizes()) {
-            TopicPartitionCount topicPartitionCount = (TopicPartitionCount) size;
-            if (topicPartitionCount.getIsBrokerTopic()) {
-                brokerTopics.add(topicPartitionCount);
+            TopicReplicaCount topicReplicaCount = (TopicReplicaCount) size;
+            if (topicReplicaCount.getIsBrokerTopic()) {
+                brokerTopics.add(topicReplicaCount);
             } else {
-                topics.add(topicPartitionCount);
+                topics.add(topicReplicaCount);
             }
         }
         // We want a comma on all but the last element so we will handle the last one separately

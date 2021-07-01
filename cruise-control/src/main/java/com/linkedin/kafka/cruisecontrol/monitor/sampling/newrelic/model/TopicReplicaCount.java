@@ -11,18 +11,18 @@ import java.util.Objects;
  * Note that size in this context refers to the number of
  * leaders and replicas of this topic.
  */
-public class TopicPartitionCount extends KafkaSize {
+public class TopicReplicaCount extends KafkaSize {
     private String _topic;
     private int _brokerId;
     private boolean _isBrokerTopic;
 
-    public TopicPartitionCount(String topic, int size) {
+    public TopicReplicaCount(String topic, int size) {
         super(size);
         _topic = topic;
         _isBrokerTopic = false;
     }
 
-    public TopicPartitionCount(String topic, int size, int brokerId) {
+    public TopicReplicaCount(String topic, int size, int brokerId) {
         super(size);
         _topic = topic;
         _brokerId = brokerId;
@@ -49,8 +49,8 @@ public class TopicPartitionCount extends KafkaSize {
         if (other == null || getClass() != other.getClass()) {
             return false;
         }
-        TopicPartitionCount topicPartitionCountOther = (TopicPartitionCount) other;
-        return hashCode() == topicPartitionCountOther.hashCode();
+        TopicReplicaCount topicReplicaCountOther = (TopicReplicaCount) other;
+        return hashCode() == topicReplicaCountOther.hashCode();
     }
 
     @Override

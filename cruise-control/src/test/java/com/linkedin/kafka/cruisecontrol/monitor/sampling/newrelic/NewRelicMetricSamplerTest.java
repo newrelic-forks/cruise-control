@@ -117,11 +117,12 @@ public class NewRelicMetricSamplerTest {
 
         ArrayList<String> topics = new ArrayList<>();
         topics.add(TEST_TOPIC1);
-        topics.add(TEST_TOPIC2);
+        //topics.add(TEST_TOPIC2);
+        topics.add(TEST_TOPIC3);
 
         ArrayList<Integer> partitions = new ArrayList<>();
         partitions.add(3);
-        partitions.add(5);
+        partitions.add(1);
 
         setUp();
         MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(TOTAL_BROKERS, topics, partitions);
@@ -134,24 +135,26 @@ public class NewRelicMetricSamplerTest {
         replay(_newRelicAdapter);
         MetricSampler.Samples samples = _newRelicMetricSampler.getSamples(metricSamplerOptions);
 
-        assertSamplesValid(samples, topics);
+        assertSamplesValid(samples, topics, TOTAL_BROKERS);
         verify(_newRelicAdapter);
     }
-
-    // Constructing NRQL queries correctly
-    // Constructing correct number of NRQL queries
 
     @Test
     public void testTooManyReplicas() throws Exception {
         Map<String, Object> config = new HashMap<>();
+        // MAX_SIZE = 2
         setConfigs(config, 2);
         addCapacityConfig(config);
 
         ArrayList<String> topics = new ArrayList<>();
+        // Topic is in three brokers -> should be 2 separate queries
         topics.add(TEST_TOPIC1);
+        topics.add(TEST_TOPIC2);
 
         ArrayList<Integer> partitions = new ArrayList<>();
-        partitions.add(3);
+        // 4 replicas total -> should be in two separate queries
+        partitions.add(2);
+        partitions.add(2);
 
         setUp();
         MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(TOTAL_BROKERS, topics, partitions);
@@ -164,20 +167,12 @@ public class NewRelicMetricSamplerTest {
         replay(_newRelicAdapter);
         MetricSampler.Samples samples = _newRelicMetricSampler.getSamples(metricSamplerOptions);
 
-        assertSamplesValid(samples, topics);
+        assertSamplesValid(samples, topics, TOTAL_BROKERS);
         verify(_newRelicAdapter);
     }
 
-    private void assertSamplesValid(MetricSampler.Samples samples, ArrayList<String> topics) {
+    private void assertSamplesValid(MetricSampler.Samples samples, ArrayList<String> topics, int brokers) {
         assertEquals(TOTAL_BROKERS, samples.brokerMetricSamples().size());
-        assertEquals(topics.size(), 2);
-    }
-
-    @Test
-    public void testPartitionQueriesWithRandomInputs() throws Exception {
-        Map<String, Object> config = new HashMap<>();
-        setConfigs(config);
-        addCapacityConfig(config);
     }
 
     private static MetricSamplerOptions buildMetricSamplerOptions(int numBrokers,
@@ -195,13 +190,6 @@ public class NewRelicMetricSamplerTest {
         );
     }
 
-    private void setConfigs(Map<String, Object> config) {
-        config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
-        config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
-        config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
-        config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
-    }
-
     private void setConfigs(Map<String, Object> config, int queryLimit) {
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
         config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
@@ -214,17 +202,21 @@ public class NewRelicMetricSamplerTest {
                                           List<NewRelicQueryResult> partitionResults) throws IOException {
             expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery())))
                     .andReturn(brokerResults);
-            expect(_newRelicAdapter.runQuery(startsWith("FROM KafkaBrokerTopicStats SELECT max(messagesInPerSec), "
-                    + "max(bytesInPerSec), max(bytesOutPerSec), max(totalProduceRequestsPerSec), "
-                    + "max(totalFetchRequestsPerSec) WHERE cluster = 'test-odd-wire-kafka'")))
-                    .andReturn(topicResults).anyTimes();
 
-            String beforePattern = "FROM Metric SELECT max\\(kafka_log_Log_Value_Size\\) "
-                    + "WHERE entity.name = '.*' WHERE ";
-            String afterPattern = " FACET broker, topic, partition SINCE 1 minute ago LIMIT MAX";
-            String partitionMatcher = beforePattern + ".*" + afterPattern;
+            String beforeTopic = "FROM KafkaBrokerTopicStats SELECT max\\(messagesInPerSec\\), max\\(bytesInPerSec\\), "
+                    + "max\\(bytesOutPerSec\\), max\\(totalProduceRequestsPerSec\\), "
+                    + "max\\(totalFetchRequestsPerSec\\) WHERE cluster = '.*'";
+            String afterTopic = " AND topic is NOT NULL FACET broker, topic SINCE 1 minute ago LIMIT MAX";
+            String topicMatcher = beforeTopic + ".*" + afterTopic;
+            expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
+                    .andReturn(topicResults).atLeastOnce();
+
+            String beforePartition = "FROM Metric SELECT max\\(kafka_log_Log_Value_Size\\) "
+                    + "WHERE entity.name = '.*' WHERE";
+            String afterPartition = " FACET broker, topic, partition SINCE 1 minute ago LIMIT MAX";
+            String partitionMatcher = beforePartition + ".*" + afterPartition;
             expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
-                    .andReturn(partitionResults).anyTimes();
+                    .andReturn(partitionResults).atLeastOnce();
     }
 
     private static List<NewRelicQueryResult> buildBrokerResults(int numBrokers) {
