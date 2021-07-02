@@ -83,11 +83,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         _balancingConstraint = balancingConstraint;
     }
 
-    /**
-     * TODO
-     *
-     * @inheritDoc
-     */
     @Override
     public ActionAcceptance actionAcceptance(BalancingAction action, ClusterModel clusterModel) {
         String topic = action.topic();
@@ -120,7 +115,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         if (actionType.equals(ActionType.LEADERSHIP_MOVEMENT)
                 || actionType.equals(ActionType.INTER_BROKER_REPLICA_MOVEMENT)
                 || actionType.equals(ActionType.INTER_BROKER_REPLICA_SWAP)) {
-            LeadershipCounts counts = new LeadershipCounts(clusterModel, topic);
+            LeadershipCounts counts = new LeadershipCounts(clusterModel, _allowedBrokerIds, topic);
 
             counts.decrementCount(sourceBroker);
             counts.incrementCount(destinationBroker);
@@ -136,7 +131,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                     // Destination replica does not exist so this is definitely not a valid move.
                     return ActionAcceptance.REPLICA_REJECT;
                 } else if (otherReplica.isLeader()) {
-                    LeadershipCounts otherTopicCounts = new LeadershipCounts(clusterModel, otherTopic);
+                    LeadershipCounts otherTopicCounts = new LeadershipCounts(clusterModel, _allowedBrokerIds, otherTopic);
 
                     otherTopicCounts.decrementCount(destinationBroker);
                     otherTopicCounts.incrementCount(sourceBroker);
@@ -151,13 +146,19 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     }
 
     /**
-     * TODO
+     * Summarizes leadership counts on a per-rack and per-broker basis.
      */
     private static class LeadershipCounts {
+        private final Set<Broker> _allowedBrokers;
+        private final Set<Rack> _allowedRacks;
+
         private final Map<Rack, Integer> _countsByRack = new HashMap<>();
         private final Map<Broker, Integer> _countsByBroker = new HashMap<>();
 
-        private LeadershipCounts(ClusterModel clusterModel, String topic) {
+        private LeadershipCounts(ClusterModel clusterModel, Set<Integer> allowedBrokerIds, String topic) {
+            _allowedBrokers = allowedBrokerIds.stream().map(clusterModel::broker).collect(Collectors.toSet());
+            _allowedRacks = _allowedBrokers.stream().map(Broker::rack).collect(Collectors.toSet());
+
             for (Partition partition : clusterModel.getPartitionsByTopic().get(topic)) {
                 Broker leader = partition.leader().broker();
 
@@ -183,15 +184,17 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         }
 
         private boolean isBalancedByRack(int target) {
-            return isBalanced(_countsByRack, target);
+            return isBalanced(_countsByRack, _allowedRacks, target);
         }
 
         private boolean isBalancedByBroker(int target) {
-            return isBalanced(_countsByBroker, target);
+            return isBalanced(_countsByBroker, _allowedBrokers, target);
         }
 
-        private static boolean isBalanced(Map<?, Integer> counts, int target) {
-            for (int count : counts.values()) {
+        private static <T> boolean isBalanced(Map<T, Integer> counts, Set<T> overallKeys, int target) {
+            for (T key : overallKeys) {
+                int count = counts.getOrDefault(key, 0);
+
                 if (count < target || count > target + 1) {
                     return false;
                 }
@@ -355,13 +358,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         }
     }
 
-    /**
-     * TODO
-     *
-     * @param clusterModel {@link ClusterModel}
-     * @throws OptimizationFailureException if no progress was made in the last
-     *                                      {@link AbstractGoal#optimize(ClusterModel, Set, OptimizationOptions)} loop
-     */
     private void ensureProgressBeingMade(ClusterModel clusterModel) throws OptimizationFailureException {
         int totalDelta = 0;
 
@@ -412,7 +408,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 }
             }
 
-            throw new OptimizationFailureException("Unable to solve for this goal; remaining imbalanced topics:\n" + s);
+            throw new OptimizationFailureException("Unable to solve for this goal; remaining imbalanced topics:\n\n" + s);
         }
 
         _previousTotalDelta = totalDelta;
