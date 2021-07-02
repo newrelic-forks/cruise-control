@@ -47,13 +47,13 @@ class NewRelicAdapter {
     List<NewRelicQueryResult> runQuery(String query) throws IOException {
         URI uri = URI.create(_newRelicEndpoint + GRAPHQL_API_PATH);
 
-        HttpPost httpGet = new HttpPost(uri);
-        httpGet.addHeader("Content-Type", "application/json");
-        httpGet.addHeader("API-Key", _newRelicApiKey);
+        HttpPost httpPost = new HttpPost(uri);
+        httpPost.addHeader("Api-Key", _newRelicApiKey);
+        httpPost.addHeader("Content-Type", "application/json");
 
-        httpGet.setEntity(buildQueryPayload(query));
+        httpPost.setEntity(buildQueryPayload(query));
 
-        try (CloseableHttpResponse response = _httpClient.execute(httpGet)) {
+        try (CloseableHttpResponse response = _httpClient.execute(httpPost)) {
             int responseCode = response.getStatusLine().getStatusCode();
 
             HttpEntity entity = response.getEntity();

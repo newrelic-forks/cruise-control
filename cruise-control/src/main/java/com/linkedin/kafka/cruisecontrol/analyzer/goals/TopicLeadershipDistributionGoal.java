@@ -19,7 +19,6 @@ import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -381,7 +380,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                                 .getOrDefault(broker.rack().id(), 0);
 
                         int targetNumLeadReplicas = _targetNumLeadReplicasPerRackByTopic.get(topic);
-                        int numLeadReplicasToFlip =  numLeadReplicasInRack - targetNumLeadReplicas;
+                        int numLeadReplicasToFlip = numLeadReplicasInRack - targetNumLeadReplicas;
 
                         if (numLeadReplicasToFlip > 0) {
                             loseLeadReplicasForRack(
@@ -415,11 +414,14 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         }
     }
 
+    // FIXME
     /**
      * This method works similarly to {@link #isTopicUnbalancedPerBroker(String topic)} but on a per-rack basis instead
      * of a per-broker basis.
-     * 
-     * @see #isTopicUnbalancedPerBroker(String) 
+     * @param clusterModel - ClusterModel
+     * @param topic - String
+     * @return - boolean
+     * @see #isTopicUnbalancedPerBroker(String)
      */
     private boolean isTopicUnbalancedPerRack(ClusterModel clusterModel, String topic) {
         Map<String, Integer> numLeadReplicasByRackId = _numLeadReplicasByTopicByRackId.get(topic);
@@ -566,18 +568,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 Set<Broker> primaryCandidates = new HashSet<>();
                 Set<Broker> secondaryCandidates = new HashSet<>();
 
-//                List<Broker> followers = clusterModel.partition(leaderReplica.topicPartition()).followerBrokers();
-//
-//                for (Broker broker : followers) {
-//                    int numLeadReplicasInRack = numLeadReplicasByRackId.getOrDefault(broker.rack().id(), 0);
-//
-//                    if (numLeadReplicasInRack < targetNumLeadReplicasPerRack) {
-//                        primaryCandidates.add(broker);
-//                    } else if (numLeadReplicasInRack == targetNumLeadReplicasPerRack) {
-//                        secondaryCandidates.add(broker);
-//                    }
-//                }
-
                 for (int brokerId : _allowedBrokerIds) {
                     Broker broker = clusterModel.broker(brokerId);
                     int numLeadReplicasInRack = numLeadReplicasByRackId.getOrDefault(broker.rack().id(), 0);
@@ -599,7 +589,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                                     clusterModel, optimizedGoals, optimizationOptions, leaderReplica, candidates)
                             || attemptRelinquishReplicaAction(
                                     clusterModel, optimizedGoals, optimizationOptions, leaderReplica, candidates)
-                            // FIXME: Need more flexible candidates for relinquish replica action here
+                    // FIXME: Need more flexible candidates for relinquish replica action here
                     ) {
                         numMoves++;
                         break;

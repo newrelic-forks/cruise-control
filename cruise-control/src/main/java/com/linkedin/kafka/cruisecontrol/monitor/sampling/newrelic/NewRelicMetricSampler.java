@@ -25,6 +25,7 @@ import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.error.MissingEnvironmentVariableException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -40,7 +41,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
     // Config name visible to tests
     static final String NEWRELIC_ENDPOINT_CONFIG = "newrelic.endpoint";
-    static final String NEWRELIC_API_KEY_CONFIG = "newrelic.api.key";
+    static final String NEWRELIC_API_KEY_ENVIRONMENT = "NR_STAGING_ACCOUNT_1_API_KEY";
     static final String NEWRELIC_ACCOUNT_ID_CONFIG = "newrelic.account.id";
     static final String NEWRELIC_QUERY_LIMIT_CONFIG = "newrelic.query.limit";
     static final String CLUSTER_NAME_CONFIG = "newrelic.cell.name";
@@ -68,7 +69,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             throw new ConfigException(String.format(
                     "%s config is required to have a query limit", NEWRELIC_QUERY_LIMIT_CONFIG));
         }
-        MAX_SIZE = (Integer) configs.get(NEWRELIC_QUERY_LIMIT_CONFIG);
+        MAX_SIZE = Integer.parseInt((String) configs.get(NEWRELIC_QUERY_LIMIT_CONFIG));
         NewRelicQueryBin.setMaxSize(MAX_SIZE);
 
         if (!configs.containsKey(CLUSTER_NAME_CONFIG)) {
@@ -82,20 +83,20 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         final String endpoint = (String) configs.get(NEWRELIC_ENDPOINT_CONFIG);
         if (endpoint == null) {
             throw new ConfigException(String.format(
-                    "%s config is required to have an endpoint", NEWRELIC_API_KEY_CONFIG));
+                    "%s config is required to have an endpoint", NEWRELIC_ENDPOINT_CONFIG));
         }
 
-        final String apiKey = (String) System.getenv("NR_STAGING_ACCOUNT_1_API_KEY");
+        final String apiKey = (String) System.getenv(NEWRELIC_API_KEY_ENVIRONMENT);
         if (apiKey == null) {
-            throw new ConfigException(String.format(
-                    "%s config is required to have an API Key", NEWRELIC_API_KEY_CONFIG));
+            throw new MissingEnvironmentVariableException(String.format(
+                    "%s environment variable is required to have an API Key", NEWRELIC_API_KEY_ENVIRONMENT));
         }
 
         if (!configs.containsKey(NEWRELIC_ACCOUNT_ID_CONFIG)) {
             throw new ConfigException(String.format(
                     "%s config is required to have an account ID", NEWRELIC_ACCOUNT_ID_CONFIG));
         }
-        final int accountId = (Integer) configs.get(NEWRELIC_ACCOUNT_ID_CONFIG);
+        final int accountId = Integer.parseInt((String) configs.get(NEWRELIC_ACCOUNT_ID_CONFIG));
 
         _httpClient = HttpClients.createDefault();
         _newRelicAdapter = new NewRelicAdapter(_httpClient, endpoint, accountId, apiKey);
@@ -121,7 +122,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         // Run partition level queries
         runPartitionQueries(metricSamplerOptions.cluster(), counts);
 
-        LOGGER.info("Added {} metric values. Skipped {} invalid query results.",
+        LOGGER.error("Added {} metric values. Skipped {} invalid query results.",
                 counts.getMetricsAdded(), counts.getResultsSkipped());
         return counts.getMetricsAdded();
     }
@@ -136,7 +137,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         final List<NewRelicQueryResult> brokerResults;
 
         try {
-            LOGGER.info("Broker Query: {}", brokerQuery);
+            LOGGER.error("Broker Query: {}", brokerQuery);
             brokerResults = _newRelicAdapter.runQuery(brokerQuery);
         } catch (IOException e) {
             // Note that we could throw an exception here, but we don't want
@@ -182,7 +183,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
                 try {
                     // FIXME
-                    LOGGER.info("Topic Query: {}", query);
+                    LOGGER.error("Topic Query: {}", query);
                     queryResults = _newRelicAdapter.runQuery(query);
                 } catch (IOException e) {
                     // Note that we could throw an exception here, but we don't want
@@ -233,7 +234,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                 final List<NewRelicQueryResult> queryResults;
 
                 try {
-                    LOGGER.info("Partition Query: {}", query);
+                    LOGGER.error("Partition Query: {}", query);
                     queryResults = _newRelicAdapter.runQuery(query);
                 } catch (IOException e) {
                     // Note that we could throw an exception here, but we don't want

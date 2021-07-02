@@ -76,7 +76,6 @@ public class NewRelicMetricSamplerTest {
         Map<String, Object> config = new HashMap<>();
         addCapacityConfig(config);
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
-        config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
         config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
         config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
         _newRelicMetricSampler.configure(config);
@@ -86,7 +85,6 @@ public class NewRelicMetricSamplerTest {
     public void testNoEndpointProvided() throws Exception {
         Map<String, Object> config = new HashMap<>();
         addCapacityConfig(config);
-        config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
         config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
         config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
         config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
@@ -99,7 +97,7 @@ public class NewRelicMetricSamplerTest {
         addCapacityConfig(config);
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
         config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
-        config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
+        config.put(NEWRELIC_QUERY_LIMIT_CONFIG, "10");
         config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
         _newRelicMetricSampler.configure(config);
     }
@@ -109,8 +107,7 @@ public class NewRelicMetricSamplerTest {
         Map<String, Object> config = new HashMap<>();
         addCapacityConfig(config);
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
-        config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
-        config.put(NEWRELIC_QUERY_LIMIT_CONFIG, 10);
+        config.put(NEWRELIC_QUERY_LIMIT_CONFIG, "10");
         config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
         _newRelicMetricSampler.configure(config);
     }
@@ -120,8 +117,7 @@ public class NewRelicMetricSamplerTest {
         Map<String, Object> config = new HashMap<>();
         addCapacityConfig(config);
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
-        config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
-        config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
+        config.put(NEWRELIC_ACCOUNT_ID_CONFIG, "1");
         config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
         _newRelicMetricSampler.configure(config);
     }
@@ -129,7 +125,7 @@ public class NewRelicMetricSamplerTest {
     @Test
     public void testGetSamplesSuccess() throws Exception {
         Map<String, Object> config = new HashMap<>();
-        setConfigs(config, 14);
+        setConfigs(config, "14");
         addCapacityConfig(config);
 
         ArrayList<String> topics = new ArrayList<>();
@@ -161,7 +157,7 @@ public class NewRelicMetricSamplerTest {
     public void testTooManyReplicas() throws Exception {
         Map<String, Object> config = new HashMap<>();
         // MAX_SIZE = 2
-        setConfigs(config, 2);
+        setConfigs(config, "2");
         addCapacityConfig(config);
 
         ArrayList<String> topics = new ArrayList<>();
@@ -208,10 +204,9 @@ public class NewRelicMetricSamplerTest {
         );
     }
 
-    private void setConfigs(Map<String, Object> config, int queryLimit) {
+    private void setConfigs(Map<String, Object> config, String queryLimit) {
         config.put(NEWRELIC_ENDPOINT_CONFIG, "https://staging-api.newrelic.com");
-        config.put(NEWRELIC_API_KEY_CONFIG, "ABC");
-        config.put(NEWRELIC_ACCOUNT_ID_CONFIG, 1);
+        config.put(NEWRELIC_ACCOUNT_ID_CONFIG, "1");
         config.put(NEWRELIC_QUERY_LIMIT_CONFIG, queryLimit);
         config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
     }
