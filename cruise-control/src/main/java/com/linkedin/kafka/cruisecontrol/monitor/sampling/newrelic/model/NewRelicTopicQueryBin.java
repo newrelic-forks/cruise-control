@@ -6,6 +6,12 @@ package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model;
 
 import java.util.ArrayList;
 
+/**
+ * This bin is used to be able to properly format topic queries
+ * using the contents inside of the bin. Note that
+ * the KafkaSize objects stored in this bin should be
+ * TopicReplicaCount objects.
+ */
 public class NewRelicTopicQueryBin extends NewRelicQueryBin {
     public NewRelicTopicQueryBin() {
         super();

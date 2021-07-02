@@ -7,9 +7,10 @@ package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model;
 import java.util.Objects;
 
 /**
- * Used to pair topics together with their size.
- * Note that size in this context refers to the number of
- * leaders and replicas of this topic.
+ * Used to pair topics together with the count of their replicas.
+ * We need this instead of just the count of partitions per topic
+ * because we query for replica data separately so each replica
+ * will end up contributing to our query limit.
  */
 public class TopicReplicaCount extends KafkaSize {
     private String _topic;
@@ -50,7 +51,10 @@ public class TopicReplicaCount extends KafkaSize {
             return false;
         }
         TopicReplicaCount topicReplicaCountOther = (TopicReplicaCount) other;
-        return hashCode() == topicReplicaCountOther.hashCode();
+        return this.getTopic().equals(topicReplicaCountOther.getTopic())
+                && this.getSize() == topicReplicaCountOther.getSize()
+                && this.getIsBrokerTopic() == topicReplicaCountOther.getIsBrokerTopic()
+                && this.getBrokerId() == topicReplicaCountOther.getBrokerId();
     }
 
     @Override

@@ -15,6 +15,9 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Represents one result from a query to NRDB. 
+ */
 public class NewRelicQueryResult {
 
     public static final String BEGIN_TIME_SECONDS_ATTR = "beginTimeSeconds";
@@ -25,6 +28,8 @@ public class NewRelicQueryResult {
     public static final String TOPIC = "topic";
     public static final String PARTITION = "partition";
 
+    // Values from the query that we don't want to parse directly
+    // but may handle separately based on which ones we need
     private static final Set<String> RESERVED_ATTRS = new HashSet<>();
     static {
         RESERVED_ATTRS.add(BEGIN_TIME_SECONDS_ATTR);
@@ -45,6 +50,14 @@ public class NewRelicQueryResult {
 
     private final Map<RawMetricType, Double> _results = new HashMap<>();
 
+    /**
+     * Takes a JSON result which represents one of the results from a NRQL query,
+     * figures out which type of query it is (broker, topic, or partition),
+     * and obtains the value of the query for each of the separate RawMetricTypes
+     * which are being used in this query. Finally will store a map
+     * of the RawMetricType to the value of that metric.
+     * @param result - The JSON result that we want to parse and obtain the value from.
+     */
     public NewRelicQueryResult(JsonNode result) {
         _epochTimeMilli = Instant.now().toEpochMilli();
 
@@ -82,7 +95,7 @@ public class NewRelicQueryResult {
         }
     }
 
-    // Used the following for testing
+    // Use the following for testing NewRelicAdapter
     public NewRelicQueryResult(int brokerID, Map<RawMetricType, Double> results) {
         _brokerID = brokerID;
         _topic = null;

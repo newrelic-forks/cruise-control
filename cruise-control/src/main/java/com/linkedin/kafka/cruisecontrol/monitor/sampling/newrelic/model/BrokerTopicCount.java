@@ -7,7 +7,7 @@ package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model;
 import java.util.Objects;
 
 /**
- * Used to store the number of brokers in each topic.
+ * Used to store the number of topics in each broker in the cluster.
  */
 public class BrokerTopicCount extends KafkaSize {
     private int _brokerId;
@@ -30,7 +30,8 @@ public class BrokerTopicCount extends KafkaSize {
             return false;
         }
         BrokerTopicCount otherSize = (BrokerTopicCount) other;
-        return this.hashCode() == otherSize.hashCode();
+        return this._brokerId == otherSize._brokerId
+                && this.getSize() == otherSize.getSize();
     }
 
     @Override

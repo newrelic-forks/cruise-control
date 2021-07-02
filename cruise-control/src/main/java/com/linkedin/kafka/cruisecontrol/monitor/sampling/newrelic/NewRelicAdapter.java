@@ -25,6 +25,10 @@ import java.util.List;
 
 import static com.linkedin.cruisecontrol.common.utils.Utils.validateNotNull;
 
+/**
+ * We use this class to query the NRQL endpoint, receive the outputs from the endpoint,
+ * and parse those outputs into usable values (NewRelicQueryResults).
+ */
 class NewRelicAdapter {
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -44,7 +48,18 @@ class NewRelicAdapter {
         this._newRelicApiKey = validateNotNull(newRelicApiKey, "newRelicApiKey cannot be null");
     }
 
+    /**
+     * Runs our query on the NRQL endpoint. Parses the output JSON into
+     * different NewRelicQueryResult values which store the metric types and
+     * metric values that we are trying to capture.
+     * @param query - The NRQL query that we want to run to obtain our data.
+     * @return - List of results from the endpoint. Each QueryResult may have
+     * multiple metric types, but will only have one value associated with each metric type
+     * that it contains.
+     * @throws IOException
+     */
     List<NewRelicQueryResult> runQuery(String query) throws IOException {
+        // Creating the query to NRQL
         URI uri = URI.create(_newRelicEndpoint + GRAPHQL_API_PATH);
 
         HttpPost httpPost = new HttpPost(uri);
@@ -53,6 +68,7 @@ class NewRelicAdapter {
 
         httpPost.setEntity(buildQueryPayload(query));
 
+        // Attempting the query
         try (CloseableHttpResponse response = _httpClient.execute(httpPost)) {
             int responseCode = response.getStatusLine().getStatusCode();
 
@@ -60,6 +76,7 @@ class NewRelicAdapter {
             InputStream content = entity.getContent();
             String responseBody = IOUtils.toString(content, StandardCharsets.UTF_8);
 
+            // Make sure we get a good response
             if (responseCode != HttpServletResponse.SC_OK) {
                 throw new IOException(String.format("Received non-success response code on New Relic GraphQL API HTTP call "
                         + "(response code = %s, response body = %s)", responseCode, responseBody));
@@ -68,6 +85,8 @@ class NewRelicAdapter {
                                 + " (response code = %s, response body = %s)", responseCode, responseBody));
             }
 
+            // We will have a null pointer exception when the query is not formatted in the way that we want it
+            // to be - This will happen most of the time because we fed an inval
             try {
                 JsonNode responseJson = JSON.readTree(responseBody);
                 JsonNode resultsJson = responseJson.get("data").get("actor").get("account").get("nrql").get("results");

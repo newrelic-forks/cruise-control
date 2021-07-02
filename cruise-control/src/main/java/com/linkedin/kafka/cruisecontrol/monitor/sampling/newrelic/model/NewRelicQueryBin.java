@@ -7,6 +7,10 @@ package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Stores a list of KafkaSize objects which all have a combined
+ * size less or equal to MAX_SIZE - 1.
+ */
 public abstract class NewRelicQueryBin {
     private int _currentSize;
     private List<KafkaSize> _sizes;
@@ -30,7 +34,7 @@ public abstract class NewRelicQueryBin {
      */
     public boolean addKafkaSize(KafkaSize newSize) {
         int size = newSize.getSize();
-        if (_currentSize + size > MAX_SIZE) {
+        if (_currentSize + size >= MAX_SIZE) {
             return false;
         } else {
             _currentSize += size;
@@ -43,5 +47,12 @@ public abstract class NewRelicQueryBin {
         return _sizes;
     }
 
+    /**
+     * Combine the values in the list into a properly
+     * formatted String that will work as part of a NRQL query for the type of
+     * objects that we are using.
+     * @return - String which can be used inside the NRQL query we want
+     * to represent the items inside this query bin.
+     */
     public abstract String generateStringForQuery();
 }

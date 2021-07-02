@@ -108,7 +108,7 @@ public final class NewRelicQuerySupplier {
         BROKER_METRICS.put("totalFetchRequestsPerSec", ALL_TOPIC_FETCH_REQUEST_RATE);
         BROKER_METRICS.put("totalProduceRequestsPerSec", ALL_TOPIC_PRODUCE_REQUEST_RATE);
         BROKER_METRICS.put("messagesInPerSec", ALL_TOPIC_MESSAGES_IN_PER_SEC);
-        BROKER_METRICS.put("cpuTotalUtilizationPercentage", BROKER_CPU_UTIL);
+        BROKER_METRICS.put("cpuTotalUtilizationPercentage / 100", BROKER_CPU_UTIL);
         BROKER_METRICS.put("produceRequestsPerSec", BROKER_PRODUCE_REQUEST_RATE);
         BROKER_METRICS.put("fetchConsumerRequestsPerSec", BROKER_CONSUMER_FETCH_REQUEST_RATE);
         BROKER_METRICS.put("fetchFollowerRequestsPerSec", BROKER_FOLLOWER_FETCH_REQUEST_RATE);

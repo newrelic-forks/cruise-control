@@ -6,6 +6,12 @@ package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model;
 
 import java.util.List;
 
+/**
+ * This bin is used to be able to properly format broker queries
+ * using the contents inside of the bin. Note that
+ * the KafkaSize objects stored in this bin should be
+ * BrokerTopicCount objects.
+ */
 public class NewRelicBrokerQueryBin extends NewRelicQueryBin {
     public NewRelicBrokerQueryBin() {
         super();
