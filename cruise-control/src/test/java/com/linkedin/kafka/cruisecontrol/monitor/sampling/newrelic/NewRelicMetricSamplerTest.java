@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Collections;
+import java.util.Random;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Arrays;
@@ -42,16 +43,11 @@ import static org.easymock.EasyMock.*;
  * Unit tests for NewRelicMetricSampler.
  */
 public class NewRelicMetricSamplerTest {
-    private static final double DOUBLE_DELTA = 0.00000001;
-    private static final double BYTES_IN_KB = 1024.0;
-
-    private static final int FIXED_VALUE = 94;
     private static final long START_EPOCH_SECONDS = 1603301400L;
     private static final long START_TIME_MS = TimeUnit.SECONDS.toMillis(START_EPOCH_SECONDS);
     private static final long END_TIME_MS = START_TIME_MS + TimeUnit.SECONDS.toMillis(59);
 
     private static final int TOTAL_BROKERS = 3;
-    private static final int TOTAL_PARTITIONS = 3;
 
     private static final String TEST_TOPIC1 = "test-topic1";
     private static final String TEST_TOPIC2 = "test-topic2";
@@ -185,6 +181,40 @@ public class NewRelicMetricSamplerTest {
         verify(_newRelicAdapter);
     }
 
+    @Test
+    public void testRandomInputs() throws Exception {
+        // Generate random value for number of brokers, topics, max partitions per topic, and max size
+        Random rand = new Random();
+
+        int maxSize = 4000;
+        int numBrokers = rand.nextInt(50);
+        int numTopics = rand.nextInt(100);
+
+        ArrayList<String> topics = new ArrayList<>();
+        ArrayList<Integer> partitions = new ArrayList<>();
+        for (int i = 0; i < numTopics; i++) {
+            topics.add(String.format("topic%s", i));
+            partitions.add(rand.nextInt(50));
+        }
+
+        Map<String, Object> config = new HashMap<>();
+        setConfigs(config, String.valueOf(maxSize));
+        addCapacityConfig(config);
+
+        setUp();
+        MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(numBrokers, topics, partitions);
+
+        _newRelicMetricSampler.configure(config);
+        _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
+
+        setupNewRelicAdapterMock(buildBrokerResults(TOTAL_BROKERS),
+                buildTopicResults(TOTAL_BROKERS, topics), buildPartitionResults(TOTAL_BROKERS, topics, partitions));
+
+        replay(_newRelicAdapter);
+        _newRelicMetricSampler.getSamples(metricSamplerOptions);
+        verify(_newRelicAdapter);
+    }
+
     private static MetricSamplerOptions buildMetricSamplerOptions(int numBrokers,
                                                                   ArrayList<String> topics,
                                                                   ArrayList<Integer> partitions) {
@@ -210,7 +240,7 @@ public class NewRelicMetricSamplerTest {
 
     private void setupNewRelicAdapterMock(List<NewRelicQueryResult> brokerResults,
                                           List<NewRelicQueryResult> topicResults,
-                                          List<NewRelicQueryResult> partitionResults) throws IOException {
+                                          List<NewRelicQueryResult> partitionResults) throws Exception {
             expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME))))
                     .andReturn(brokerResults);
 
@@ -332,7 +362,7 @@ public class NewRelicMetricSamplerTest {
         for (int i = 0; i < topics.size(); i++) {
             for (int partitionId = 0; partitionId < partitions.get(i); partitionId++) {
                 partitionInfo.add(new PartitionInfo(topics.get(i), partitionId,
-                        allNodes[partitionId % numBrokers], allNodes, allNodes));
+                        allNodes[(partitionId + i) % numBrokers], allNodes, allNodes));
             }
         }
         return new Cluster("cluster_id", Arrays.asList(allNodes),

@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Stores a list of KafkaSize objects which all have a combined
- * size less or equal to MAX_SIZE - 1.
+ * size less than or equal to MAX_SIZE - 1.
  */
 public abstract class NewRelicQueryBin {
     private int _currentSize;
@@ -41,6 +41,10 @@ public abstract class NewRelicQueryBin {
             _sizes.add(newSize);
             return true;
         }
+    }
+
+    public int getSize() {
+        return _currentSize;
     }
 
     public List<KafkaSize> getSizes() {

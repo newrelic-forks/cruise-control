@@ -161,7 +161,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
         try {
             brokerResults = _newRelicAdapter.runQuery(brokerQuery);
-        } catch (IOException e) {
+        } catch (Exception e) {
             // Note that we could throw an exception here, but we don't want
             // to stop trying all future queries because this one query
             // failed to run
@@ -250,11 +250,21 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             List<String> partitionQueries = getPartitionQueries(topicQueryBins);
 
             // Run the partition queries
-            for (String query: partitionQueries) {
+            //for (String query: partitionQueries) {
+            //    final List<NewRelicQueryResult> queryResults;
+            //
+            //    try {
+            //        queryResults = _newRelicAdapter.runQuery(query);
+
+            // FIXME - Adding debug statements for now
+            for (int i = 0; i < partitionQueries.size(); i++) {
+                String query = partitionQueries.get(i);
                 final List<NewRelicQueryResult> queryResults;
 
                 try {
                     queryResults = _newRelicAdapter.runQuery(query);
+                    System.out.printf("Internal query size: %s. Query output size: %s.%n",
+                            topicQueryBins.get(i).getSize(), queryResults.size());
                 } catch (IOException e) {
                     // Note that we could throw an exception here, but we don't want
                     // to stop trying all future queries because this one query
