@@ -27,7 +27,7 @@ public class NewRelicTopicQueryBin extends NewRelicQueryBin {
         ArrayList<TopicReplicaCount> topics = new ArrayList<>();
         ArrayList<TopicReplicaCount> brokerTopics = new ArrayList<>();
 
-        for (KafkaSize size: getSizes()) {
+        for (KafkaSize size: getKafkaSizes()) {
             TopicReplicaCount topicReplicaCount = (TopicReplicaCount) size;
             if (topicReplicaCount.getIsBrokerTopic()) {
                 brokerTopics.add(topicReplicaCount);

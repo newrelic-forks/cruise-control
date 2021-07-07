@@ -19,7 +19,7 @@ public class NewRelicBrokerQueryBin extends NewRelicQueryBin {
 
     @Override
     public String generateStringForQuery() {
-        if (getSizes().size() == 0) {
+        if (getKafkaSizes().size() == 0) {
             return "";
         } else {
             // We want this to be comma separated list of brokers
@@ -27,7 +27,7 @@ public class NewRelicBrokerQueryBin extends NewRelicQueryBin {
             StringBuffer brokerBuffer = new StringBuffer();
             brokerBuffer.append("WHERE broker IN (");
 
-            List<KafkaSize> sizes = getSizes();
+            List<KafkaSize> sizes = getKafkaSizes();
             for (int i = 0; i < sizes.size() - 1; i++) {
                 BrokerTopicCount brokerTopicCount = (BrokerTopicCount) sizes.get(i);
                 brokerBuffer.append(String.format("%s, ", brokerTopicCount.getBrokerId()));

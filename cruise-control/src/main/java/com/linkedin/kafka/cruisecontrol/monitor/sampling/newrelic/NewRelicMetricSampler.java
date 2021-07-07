@@ -58,7 +58,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
     // Config name visible to tests
     static final String NEWRELIC_ENDPOINT_CONFIG = "newrelic.endpoint";
-    static final String NEWRELIC_API_KEY_ENVIRONMENT = "NR_STAGING_ACCOUNT_1_API_KEY";
+    static final String NEWRELIC_API_KEY_ENVIRONMENT = "NR_KPT_SUBACCOUNT_API_KEY";
     static final String NEWRELIC_ACCOUNT_ID_CONFIG = "newrelic.account.id";
     static final String NEWRELIC_QUERY_LIMIT_CONFIG = "newrelic.query.limit";
     static final String CLUSTER_NAME_CONFIG = "newrelic.cell.name";
@@ -200,11 +200,28 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             List<String> topicQueries = getTopicQueries(brokerQueryBins);
 
             // Run the topic queries
-            for (String query: topicQueries) {
+            for (int i = 0; i < topicQueries.size(); i++) {
+                String query = topicQueries.get(i);
                 final List<NewRelicQueryResult> queryResults;
 
                 try {
                     queryResults = _newRelicAdapter.runQuery(query);
+
+                    // FIXME - Adding debug statements for now
+                    System.out.printf("Internal topic query size: %s. Query output size: %s.%n",
+                            brokerQueryBins.get(i).getSize(), queryResults.size());
+
+                    if (queryResults.size() >= MAX_SIZE) {
+                        splitBins(brokerQueryBins.get(i), brokerQueryBins,
+                                topicQueries, RawMetricType.MetricScope.TOPIC);
+                        // FIXME - remove the print statement when the LOGGER level gets fixed
+                        System.out.printf("The previous topic bin was split into two separate bins.%n");
+                        LOGGER.info("The previous topic bin was split into two separate bins.%n");
+
+                        // Since we split this bin up, we don't want to add in the results since
+                        // we will end up doing that later anyway when we run the re-queries
+                        continue;
+                    }
                 } catch (IOException e) {
                     // Note that we could throw an exception here, but we don't want
                     // to stop trying all future queries because this one query
@@ -249,22 +266,27 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             // Generate the queries based on the bins that PartitionCounts were assigned to
             List<String> partitionQueries = getPartitionQueries(topicQueryBins);
 
-            // Run the partition queries
-            //for (String query: partitionQueries) {
-            //    final List<NewRelicQueryResult> queryResults;
-            //
-            //    try {
-            //        queryResults = _newRelicAdapter.runQuery(query);
-
-            // FIXME - Adding debug statements for now
             for (int i = 0; i < partitionQueries.size(); i++) {
                 String query = partitionQueries.get(i);
                 final List<NewRelicQueryResult> queryResults;
 
                 try {
                     queryResults = _newRelicAdapter.runQuery(query);
-                    System.out.printf("Internal query size: %s. Query output size: %s.%n",
+                    // FIXME - Adding debug statements for now
+                    System.out.printf("Internal partition query size: %s. Query output size: %s.%n",
                             topicQueryBins.get(i).getSize(), queryResults.size());
+
+                    if (queryResults.size() >= MAX_SIZE) {
+                        splitBins(topicQueryBins.get(i), topicQueryBins,
+                                partitionQueries, RawMetricType.MetricScope.PARTITION);
+                        // FIXME - remove the print statement when the LOGGER level gets fixed
+                        System.out.printf("The previous partition bin was split into two separate bins.%n");
+                        LOGGER.info("The previous partition bin was split into two separate bins.%n");
+
+                        // Since we split this bin up, we don't want to add in the results since
+                        // we will end up doing that later anyway when we run the re-queries
+                        continue;
+                    }
                 } catch (IOException e) {
                     // Note that we could throw an exception here, but we don't want
                     // to stop trying all future queries because this one query
@@ -272,6 +294,9 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     LOGGER.error("Error when attempting to query NRQL for metrics.", e);
                     continue;
                 }
+
+                // If queryResults are of MAX_SIZE or greater, split the corresponding
+                // query bin into 2 new query bins and rerun those separate queries
 
                 for (NewRelicQueryResult result : queryResults) {
                     try {
@@ -477,6 +502,32 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             queries.add(NewRelicQuerySupplier.partitionQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
         }
         return queries;
+    }
+
+    /**
+     * Splits the input bin into two separate bins and adds them to our list of queryBins
+     * and adds the corresponding queries to our list of queries.
+     * @param binToSplit - Bin we want to end up splitting
+     * @param queryBins - List that we are going to add the new split bins to.
+     * @param queries - List of queries that we are going to add the new queries to.
+     * @param scope - Scope about whether this is a topic size or partition size being split.
+     * @throws InstantiationException
+     * @throws IllegalAccessException
+     */
+    private void splitBins(NewRelicQueryBin binToSplit, List<NewRelicQueryBin> queryBins,
+                           List<String> queries, RawMetricType.MetricScope scope)
+            throws InstantiationException, IllegalAccessException {
+        NewRelicQueryBin[] splitBins = binToSplit.splitBin();
+        for (NewRelicQueryBin bin: splitBins) {
+            queryBins.add(bin);
+            if (scope == RawMetricType.MetricScope.TOPIC) {
+                queries.add(NewRelicQuerySupplier.topicQuery(
+                        bin.generateStringForQuery(), CLUSTER_NAME));
+            } else if (scope == RawMetricType.MetricScope.PARTITION) {
+                queries.add(NewRelicQuerySupplier.partitionQuery(
+                        bin.generateStringForQuery(), CLUSTER_NAME));
+            }
+        }
     }
 
     /**

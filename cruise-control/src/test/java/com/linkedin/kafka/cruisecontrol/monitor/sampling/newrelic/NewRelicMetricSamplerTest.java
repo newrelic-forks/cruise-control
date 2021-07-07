@@ -41,6 +41,8 @@ import static org.easymock.EasyMock.*;
 
 /**
  * Unit tests for NewRelicMetricSampler.
+ * We use this class to primarily check that the queries are formatted properly.
+ * NewRelicAdapterTest tests whether or not we properly handle those queries.
  */
 public class NewRelicMetricSamplerTest {
     private static final long START_EPOCH_SECONDS = 1603301400L;
@@ -143,8 +145,9 @@ public class NewRelicMetricSamplerTest {
         _newRelicMetricSampler.configure(config);
         _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
 
-        setupNewRelicAdapterMock(buildBrokerResults(TOTAL_BROKERS),
-                buildTopicResults(TOTAL_BROKERS, topics), buildPartitionResults(TOTAL_BROKERS, topics, partitions));
+        setupNewRelicAdapterMock(buildBrokerResults(1),
+                buildTopicResults(1, new ArrayList<>()),
+                buildPartitionResults(TOTAL_BROKERS, new ArrayList<>(), new ArrayList<>()));
 
         replay(_newRelicAdapter);
         _newRelicMetricSampler.getSamples(metricSamplerOptions);
@@ -173,8 +176,9 @@ public class NewRelicMetricSamplerTest {
         _newRelicMetricSampler.configure(config);
         _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
 
-        setupNewRelicAdapterMock(buildBrokerResults(TOTAL_BROKERS),
-                buildTopicResults(TOTAL_BROKERS, topics), buildPartitionResults(TOTAL_BROKERS, topics, partitions));
+        setupNewRelicAdapterMock(buildBrokerResults(1),
+                buildTopicResults(1, new ArrayList<>()),
+                buildPartitionResults(TOTAL_BROKERS, new ArrayList<>(), new ArrayList<>()));
 
         replay(_newRelicAdapter);
         _newRelicMetricSampler.getSamples(metricSamplerOptions);
@@ -207,8 +211,43 @@ public class NewRelicMetricSamplerTest {
         _newRelicMetricSampler.configure(config);
         _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
 
-        setupNewRelicAdapterMock(buildBrokerResults(TOTAL_BROKERS),
-                buildTopicResults(TOTAL_BROKERS, topics), buildPartitionResults(TOTAL_BROKERS, topics, partitions));
+        setupNewRelicAdapterMock(buildBrokerResults(1),
+                buildTopicResults(1, new ArrayList<>()),
+                buildPartitionResults(TOTAL_BROKERS, new ArrayList<>(), new ArrayList<>()));
+
+        replay(_newRelicAdapter);
+        _newRelicMetricSampler.getSamples(metricSamplerOptions);
+        verify(_newRelicAdapter);
+    }
+
+    @Test
+    public void testSplitBins() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        // MAX_SIZE = 2
+        setConfigs(config, "9");
+        addCapacityConfig(config);
+
+        int numBrokers = 1;
+
+        ArrayList<String> topics = new ArrayList<>();
+        // Topic is in three brokers -> should be 2 separate queries
+        topics.add(TEST_TOPIC1);
+        topics.add(TEST_TOPIC2);
+
+        ArrayList<Integer> partitions = new ArrayList<>();
+        // 4 replicas total -> should be in two separate queries
+        partitions.add(2);
+        partitions.add(2);
+
+        setUp();
+        MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(1, topics, partitions);
+        _newRelicMetricSampler.configure(config);
+        _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
+
+        // Note we pass in too many brokers to have an output that is too large
+        setupNewRelicAdapterMockSplitBins(buildBrokerResults(numBrokers),
+                buildTopicResults(10, topics),
+                buildPartitionResults(10, topics, partitions));
 
         replay(_newRelicAdapter);
         _newRelicMetricSampler.getSamples(metricSamplerOptions);
@@ -270,6 +309,55 @@ public class NewRelicMetricSamplerTest {
             String partitionMatcher = beforePartitionRegex + partitionRegex + afterPartitionRegex;
             expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
                     .andReturn(partitionResults).atLeastOnce();
+    }
+
+    private void setupNewRelicAdapterMockSplitBins(List<NewRelicQueryResult> brokerResults,
+                                                   List<NewRelicQueryResult> topicResults,
+                                                   List<NewRelicQueryResult> partitionResults) throws Exception {
+        expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME))))
+                .andReturn(brokerResults);
+
+        String beforeTopicRegex = String.format("FROM KafkaBrokerTopicStats SELECT max\\(messagesInPerSec\\), "
+                + "max\\(bytesInPerSec\\), max\\(bytesOutPerSec\\), max\\(totalProduceRequestsPerSec\\), "
+                + "max\\(totalFetchRequestsPerSec\\) WHERE cluster = '%s'", CLUSTER_NAME);
+        String afterTopicRegex = "AND topic is NOT NULL FACET broker, topic SINCE 1 minute ago LIMIT MAX";
+        String topicRegex = "(( WHERE broker IN \\((\\d+, )*\\d+\\) )|\\s)";
+        // the middle can be either " " or "WHERE broker IN (1, 2, ... 0)
+        String topicMatcher = beforeTopicRegex + topicRegex + afterTopicRegex;
+
+        // Return too many results the first time
+        expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
+                .andReturn(topicResults);
+
+        // Return 0 for each of the split bins
+        expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
+                .andReturn(new ArrayList<>());
+        expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
+                .andReturn(new ArrayList<>());
+
+        String beforePartitionRegex = String.format("FROM Metric SELECT max\\(kafka_log_Log_Value_Size\\) "
+                + "WHERE entity.name = '%s' WHERE ", CLUSTER_NAME);
+        String afterPartitionRegex = "FACET broker, topic, partition SINCE 1 minute ago LIMIT MAX";
+        // regex portion can be 1. "topic IN ('topic1', 'topic2', ... 'topicN') "
+        //                      2. "topic IN ('topic1', 'topic2', ... 'topicN')
+        //                              OR (topic = 'brokerTopic1' AND broker = 1)...
+        //                              OR (topic = 'brokerTopicN' AND broker = N) "
+        //                      3. "(topic = 'brokerTopic1' AND broker = 1) OR ...
+        //                              (topic = 'brokerTopicN' AND broker = N) "
+        String partitionRegex = "((topic IN \\(('[\\w\\-]*', )*'[\\w\\-]*'\\) )"
+                + "|(topic IN \\(('[\\w\\-]*', )*'[\\w\\-]*'\\) (OR \\(topic = '[\\w\\-]+' "
+                + "AND broker = \\d+\\) )+)|((\\(topic = '[\\w\\-]+' AND broker = \\d+\\) "
+                + "OR )*\\(topic = '[\\w\\-]+' AND broker = \\d+\\) ))";
+        String partitionMatcher = beforePartitionRegex + partitionRegex + afterPartitionRegex;
+        // Return too many results first time
+        expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
+                .andReturn(partitionResults);
+
+        // Return 0 for each of the split bins
+        expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
+                .andReturn(new ArrayList<>());
+        expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
+                .andReturn(new ArrayList<>());
     }
 
     private static List<NewRelicQueryResult> buildBrokerResults(int numBrokers) {
