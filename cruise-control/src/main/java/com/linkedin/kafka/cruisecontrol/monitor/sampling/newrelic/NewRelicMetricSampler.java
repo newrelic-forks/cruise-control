@@ -135,14 +135,18 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     protected int retrieveMetricsForProcessing(MetricSamplerOptions metricSamplerOptions) {
         ResultCounts counts = new ResultCounts();
 
-        // Run our broker level queries
-        runBrokerQueries(counts);
+        try {
+            // Run our broker level queries
+            runBrokerQueries(counts);
 
-        // Run topic level queries
-        runTopicQueries(metricSamplerOptions.cluster(), counts);
+            // Run topic level queries
+            runTopicQueries(metricSamplerOptions.cluster(), counts);
 
-        // Run partition level queries
-        runPartitionQueries(metricSamplerOptions.cluster(), counts);
+            // Run partition level queries
+            runPartitionQueries(metricSamplerOptions.cluster(), counts);
+        } catch (Exception e) {
+            LOGGER.error("An error occurred when attempting to query for data.", e);
+        }
 
         // FIXME - Remove print statements eventually
         System.out.printf("Added %s metric values. Skipped %s invalid query results.%n",
@@ -154,20 +158,10 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      * Run the NRQL queries to get our broker level stats.
      * @param counts - Keeps track of the metrics added and the results skipped.
      */
-    private void runBrokerQueries(ResultCounts counts) {
+    private void runBrokerQueries(ResultCounts counts) throws Exception {
         // Run our broker query first
         final String brokerQuery = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
-        final List<NewRelicQueryResult> brokerResults;
-
-        try {
-            brokerResults = _newRelicAdapter.runQuery(brokerQuery);
-        } catch (Exception e) {
-            // Note that we could throw an exception here, but we don't want
-            // to stop trying all future queries because this one query
-            // failed to run
-            LOGGER.error("Error when attempting to query NRQL for broker metrics.", e);
-            return;
-        }
+        final List<NewRelicQueryResult> brokerResults = _newRelicAdapter.runQuery(brokerQuery);
 
         for (NewRelicQueryResult result : brokerResults) {
             try {
@@ -188,63 +182,50 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      * @param cluster - Cluster object containing information metadata this cluster.
      * @param counts - Keeps track of the metrics added and the results skipped.
      */
-    private void runTopicQueries(Cluster cluster, ResultCounts counts) {
+    private void runTopicQueries(Cluster cluster, ResultCounts counts) throws Exception {
         // Get the sorted list of brokers by their topic counts
         List<KafkaSize> brokerSizes = getSortedBrokersByTopicCount(cluster);
 
-        List<NewRelicQueryBin> brokerQueryBins;
-        try {
-            brokerQueryBins = assignToBins(brokerSizes, NewRelicBrokerQueryBin.class);
+        List<NewRelicQueryBin> brokerQueryBins = assignToBins(brokerSizes, NewRelicBrokerQueryBin.class);
 
-            // Generate the queries based on the bins that TopicCounts were assigned to
-            List<String> topicQueries = getTopicQueries(brokerQueryBins);
+        // Generate the queries based on the bins that TopicCounts were assigned to
+        List<String> topicQueries = getTopicQueries(brokerQueryBins);
 
-            // Run the topic queries
-            for (int i = 0; i < topicQueries.size(); i++) {
-                String query = topicQueries.get(i);
-                final List<NewRelicQueryResult> queryResults;
+        // Run the topic queries
+        for (int i = 0; i < topicQueries.size(); i++) {
+            String query = topicQueries.get(i);
+            final List<NewRelicQueryResult> queryResults;
 
-                try {
-                    queryResults = _newRelicAdapter.runQuery(query);
+            try {
+                queryResults = _newRelicAdapter.runQuery(query);
 
-                    // FIXME - Adding debug statements for now
-                    System.out.printf("Internal topic query size: %s. Query output size: %s.%n",
-                            brokerQueryBins.get(i).getSize(), queryResults.size());
+                // FIXME - Adding debug statements for now
+                System.out.printf("Query: %s -- Internal topic query size: %s -- Query output size: %s%n",
+                        query, brokerQueryBins.get(i).getSize(), queryResults.size());
 
-                    if (queryResults.size() >= MAX_SIZE) {
-                        splitBins(brokerQueryBins.get(i), brokerQueryBins,
-                                topicQueries, RawMetricType.MetricScope.TOPIC);
-                        // FIXME - remove the print statement when the LOGGER level gets fixed
-                        System.out.printf("The previous topic bin was split into two separate bins.%n");
-                        LOGGER.info("The previous topic bin was split into two separate bins.%n");
-
-                        // Since we split this bin up, we don't want to add in the results since
-                        // we will end up doing that later anyway when we run the re-queries
-                        continue;
-                    }
-                } catch (IOException e) {
-                    // Note that we could throw an exception here, but we don't want
-                    // to stop trying all future queries because this one query
-                    // failed to run
-                    LOGGER.error("Error when attempting to query NRQL for metrics.", e);
-                    continue;
+                if (queryResults.size() >= MAX_SIZE) {
+                    throw new IllegalStateException("Topic query output was larger than the maximum "
+                            + "accepted query size.");
                 }
-
-                for (NewRelicQueryResult result : queryResults) {
-                    try {
-                        counts.addMetricsAdded(addTopicMetrics(result));
-                    } catch (InvalidNewRelicResultException e) {
-                        // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
-                        // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
-                        // this check here anyway to be safe
-                        LOGGER.trace("Invalid query result received from New Relic for topic query {}", query, e);
-                        counts.addResultsSkipped(1);
-                    }
-                }
+            } catch (IOException e) {
+                // Note that we could throw an exception here, but we don't want
+                // to stop trying all future queries because this one query
+                // failed to run
+                LOGGER.error("Error when attempting to query NRQL for metrics.", e);
+                continue;
             }
 
-        } catch (Exception e) {
-            LOGGER.error("Error when converting topics to bins.", e);
+            for (NewRelicQueryResult result : queryResults) {
+                try {
+                    counts.addMetricsAdded(addTopicMetrics(result));
+                } catch (InvalidNewRelicResultException e) {
+                    // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
+                    // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
+                    // this check here anyway to be safe
+                    LOGGER.trace("Invalid query result received from New Relic for topic query {}", query, e);
+                    counts.addResultsSkipped(1);
+                }
+            }
         }
     }
 
@@ -254,64 +235,50 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      * @param cluster - Cluster object containing information metadata this cluster.
      * @param counts - Keeps track of the metrics added and the results skipped.
      */
-    private void runPartitionQueries(Cluster cluster, ResultCounts counts) {
+    private void runPartitionQueries(Cluster cluster, ResultCounts counts) throws Exception {
         // Get the sorted list of topics by their leader + follower count for each partition
         List<KafkaSize> topicSizes = getSortedTopicsByReplicaCount(cluster);
 
         // Use FFD algorithm (more info at method header) to assign topicSizes to queries
-        List<NewRelicQueryBin> topicQueryBins;
-        try {
-            topicQueryBins = assignToBins(topicSizes, NewRelicTopicQueryBin.class);
+        List<NewRelicQueryBin> topicQueryBins = assignToBins(topicSizes, NewRelicTopicQueryBin.class);
 
-            // Generate the queries based on the bins that PartitionCounts were assigned to
-            List<String> partitionQueries = getPartitionQueries(topicQueryBins);
+        // Generate the queries based on the bins that PartitionCounts were assigned to
+        List<String> partitionQueries = getPartitionQueries(topicQueryBins);
 
-            for (int i = 0; i < partitionQueries.size(); i++) {
-                String query = partitionQueries.get(i);
-                final List<NewRelicQueryResult> queryResults;
+        for (int i = 0; i < partitionQueries.size(); i++) {
+            String query = partitionQueries.get(i);
+            final List<NewRelicQueryResult> queryResults;
 
-                try {
-                    queryResults = _newRelicAdapter.runQuery(query);
-                    // FIXME - Adding debug statements for now
-                    System.out.printf("Internal partition query size: %s. Query output size: %s.%n",
-                            topicQueryBins.get(i).getSize(), queryResults.size());
+            try {
+                queryResults = _newRelicAdapter.runQuery(query);
 
-                    if (queryResults.size() >= MAX_SIZE) {
-                        splitBins(topicQueryBins.get(i), topicQueryBins,
-                                partitionQueries, RawMetricType.MetricScope.PARTITION);
-                        // FIXME - remove the print statement when the LOGGER level gets fixed
-                        System.out.printf("The previous partition bin was split into two separate bins.%n");
-                        LOGGER.info("The previous partition bin was split into two separate bins.%n");
+                // FIXME - Adding debug statements for now
+                System.out.printf("Query: %s -- Internal partition query size: %s -- Query output size: %s%n",
+                        query, topicQueryBins.get(i).getSize(), queryResults.size());
 
-                        // Since we split this bin up, we don't want to add in the results since
-                        // we will end up doing that later anyway when we run the re-queries
-                        continue;
-                    }
-                } catch (IOException e) {
-                    // Note that we could throw an exception here, but we don't want
-                    // to stop trying all future queries because this one query
-                    // failed to run
-                    LOGGER.error("Error when attempting to query NRQL for metrics.", e);
-                    continue;
+                if (queryResults.size() >= MAX_SIZE) {
+                    throw new IllegalStateException("Partition query output was larger than the maximum "
+                            + "accepted query size.");
                 }
+            } catch (IOException e) {
+                // Note that we could throw an exception here, but we don't want
+                // to stop trying all future queries because this one query
+                // failed to run
+                LOGGER.error("Error when attempting to query NRQL for metrics.", e);
+                continue;
+            }
 
-                // If queryResults are of MAX_SIZE or greater, split the corresponding
-                // query bin into 2 new query bins and rerun those separate queries
-
-                for (NewRelicQueryResult result : queryResults) {
-                    try {
-                        counts.addMetricsAdded(addPartitionMetrics(result));
-                    } catch (InvalidNewRelicResultException e) {
-                        // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
-                        // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
-                        // this check here anyway to be safe
-                        LOGGER.trace("Invalid query result received from New Relic for partition query {}", query, e);
-                        counts.addResultsSkipped(1);
-                    }
+            for (NewRelicQueryResult result : queryResults) {
+                try {
+                    counts.addMetricsAdded(addPartitionMetrics(result));
+                } catch (InvalidNewRelicResultException e) {
+                    // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
+                    // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
+                    // this check here anyway to be safe
+                    LOGGER.trace("Invalid query result received from New Relic for partition query {}", query, e);
+                    counts.addResultsSkipped(1);
                 }
             }
-        } catch (Exception e) {
-            LOGGER.error("Error when converting topics to bins.", e);
         }
     }
 
@@ -502,32 +469,6 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             queries.add(NewRelicQuerySupplier.partitionQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
         }
         return queries;
-    }
-
-    /**
-     * Splits the input bin into two separate bins and adds them to our list of queryBins
-     * and adds the corresponding queries to our list of queries.
-     * @param binToSplit - Bin we want to end up splitting
-     * @param queryBins - List that we are going to add the new split bins to.
-     * @param queries - List of queries that we are going to add the new queries to.
-     * @param scope - Scope about whether this is a topic size or partition size being split.
-     * @throws InstantiationException
-     * @throws IllegalAccessException
-     */
-    private void splitBins(NewRelicQueryBin binToSplit, List<NewRelicQueryBin> queryBins,
-                           List<String> queries, RawMetricType.MetricScope scope)
-            throws InstantiationException, IllegalAccessException {
-        NewRelicQueryBin[] splitBins = binToSplit.splitBin();
-        for (NewRelicQueryBin bin: splitBins) {
-            queryBins.add(bin);
-            if (scope == RawMetricType.MetricScope.TOPIC) {
-                queries.add(NewRelicQuerySupplier.topicQuery(
-                        bin.generateStringForQuery(), CLUSTER_NAME));
-            } else if (scope == RawMetricType.MetricScope.PARTITION) {
-                queries.add(NewRelicQuerySupplier.partitionQuery(
-                        bin.generateStringForQuery(), CLUSTER_NAME));
-            }
-        }
     }
 
     /**

@@ -221,13 +221,11 @@ public class NewRelicMetricSamplerTest {
     }
 
     @Test
-    public void testSplitBins() throws Exception {
+    public void testTooLargeQueryOutput() throws Exception {
         Map<String, Object> config = new HashMap<>();
         // MAX_SIZE = 2
-        setConfigs(config, "9");
+        setConfigs(config, "3");
         addCapacityConfig(config);
-
-        int numBrokers = 1;
 
         ArrayList<String> topics = new ArrayList<>();
         // Topic is in three brokers -> should be 2 separate queries
@@ -240,14 +238,12 @@ public class NewRelicMetricSamplerTest {
         partitions.add(2);
 
         setUp();
-        MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(1, topics, partitions);
+        MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(TOTAL_BROKERS, topics, partitions);
         _newRelicMetricSampler.configure(config);
         _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
 
-        // Note we pass in too many brokers to have an output that is too large
-        setupNewRelicAdapterMockSplitBins(buildBrokerResults(numBrokers),
-                buildTopicResults(10, topics),
-                buildPartitionResults(10, topics, partitions));
+        setupNewRelicIllegalStateMock(buildBrokerResults(1),
+                buildTopicResults(TOTAL_BROKERS, topics));
 
         replay(_newRelicAdapter);
         _newRelicMetricSampler.getSamples(metricSamplerOptions);
@@ -311,9 +307,8 @@ public class NewRelicMetricSamplerTest {
                     .andReturn(partitionResults).atLeastOnce();
     }
 
-    private void setupNewRelicAdapterMockSplitBins(List<NewRelicQueryResult> brokerResults,
-                                                   List<NewRelicQueryResult> topicResults,
-                                                   List<NewRelicQueryResult> partitionResults) throws Exception {
+    private void setupNewRelicIllegalStateMock(List<NewRelicQueryResult> brokerResults,
+                                                   List<NewRelicQueryResult> topicResults) throws Exception {
         expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME))))
                 .andReturn(brokerResults);
 
@@ -328,36 +323,6 @@ public class NewRelicMetricSamplerTest {
         // Return too many results the first time
         expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
                 .andReturn(topicResults);
-
-        // Return 0 for each of the split bins
-        expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
-                .andReturn(new ArrayList<>());
-        expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
-                .andReturn(new ArrayList<>());
-
-        String beforePartitionRegex = String.format("FROM Metric SELECT max\\(kafka_log_Log_Value_Size\\) "
-                + "WHERE entity.name = '%s' WHERE ", CLUSTER_NAME);
-        String afterPartitionRegex = "FACET broker, topic, partition SINCE 1 minute ago LIMIT MAX";
-        // regex portion can be 1. "topic IN ('topic1', 'topic2', ... 'topicN') "
-        //                      2. "topic IN ('topic1', 'topic2', ... 'topicN')
-        //                              OR (topic = 'brokerTopic1' AND broker = 1)...
-        //                              OR (topic = 'brokerTopicN' AND broker = N) "
-        //                      3. "(topic = 'brokerTopic1' AND broker = 1) OR ...
-        //                              (topic = 'brokerTopicN' AND broker = N) "
-        String partitionRegex = "((topic IN \\(('[\\w\\-]*', )*'[\\w\\-]*'\\) )"
-                + "|(topic IN \\(('[\\w\\-]*', )*'[\\w\\-]*'\\) (OR \\(topic = '[\\w\\-]+' "
-                + "AND broker = \\d+\\) )+)|((\\(topic = '[\\w\\-]+' AND broker = \\d+\\) "
-                + "OR )*\\(topic = '[\\w\\-]+' AND broker = \\d+\\) ))";
-        String partitionMatcher = beforePartitionRegex + partitionRegex + afterPartitionRegex;
-        // Return too many results first time
-        expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
-                .andReturn(partitionResults);
-
-        // Return 0 for each of the split bins
-        expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
-                .andReturn(new ArrayList<>());
-        expect(_newRelicAdapter.runQuery(matches(partitionMatcher)))
-                .andReturn(new ArrayList<>());
     }
 
     private static List<NewRelicQueryResult> buildBrokerResults(int numBrokers) {

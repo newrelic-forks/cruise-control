@@ -43,39 +43,6 @@ public abstract class NewRelicQueryBin {
         }
     }
 
-    /**
-     * Splits the input bin into two separate bins which are balanced by the even bins
-     * going to the first bin and the odd bins going to the second bin.
-     * @return - Returns the split bins.
-     * @throws InstantiationException
-     * @throws IllegalAccessException
-     */
-    public NewRelicQueryBin[] splitBin() throws InstantiationException, IllegalAccessException {
-        // Create two new bins to split the current bin into
-        Class thisClass = this.getClass();
-        NewRelicQueryBin firstBin = (NewRelicQueryBin) thisClass.newInstance();
-        NewRelicQueryBin secondBin = (NewRelicQueryBin) thisClass.newInstance();
-
-        // Even bin numbers go into our first bin; odd bins go into the second bin
-        for (int i = 0; i < getKafkaSizes().size(); i++) {
-            if ((i % 2) == 0) {
-                // Everything fit into current bin, so if approximately half can't fit into
-                // a new bin, something went wrong
-                if (!firstBin.addKafkaSize(getKafkaSizes().get(i))) {
-                    throw new IllegalStateException();
-                }
-            } else {
-                // Everything fit into current bin, so if approximately half can't fit into
-                // a new bin, something went wrong
-                if (!secondBin.addKafkaSize(getKafkaSizes().get(i))) {
-                    throw new IllegalStateException();
-                }
-            }
-        }
-
-        return new NewRelicQueryBin[]{firstBin, secondBin};
-    }
-
     public int getSize() {
         return _currentSize;
     }
