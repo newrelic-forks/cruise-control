@@ -26,7 +26,6 @@ import org.apache.kafka.common.PartitionInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.error.MissingEnvironmentVariableException;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
@@ -151,6 +150,8 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         // FIXME - Remove print statements eventually
         System.out.printf("Added %s metric values. Skipped %s invalid query results.%n",
                 counts.getMetricsAdded(), counts.getResultsSkipped());
+        LOGGER.info("Added {} metric values. Skipped {} invalid query results.",
+                counts.getMetricsAdded(), counts.getResultsSkipped());
         return counts.getMetricsAdded();
     }
 
@@ -170,7 +171,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                 // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
                 // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
                 // this check here anyway to be safe
-                LOGGER.trace("Invalid query result received from New Relic for query {}", brokerQuery, e);
+                LOGGER.error("Invalid query result received from New Relic for query {}", brokerQuery, e);
                 counts.addResultsSkipped(1);
             }
         }
@@ -194,25 +195,14 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         // Run the topic queries
         for (int i = 0; i < topicQueries.size(); i++) {
             String query = topicQueries.get(i);
-            final List<NewRelicQueryResult> queryResults;
+            final List<NewRelicQueryResult> queryResults = _newRelicAdapter.runQuery(query);
 
-            try {
-                queryResults = _newRelicAdapter.runQuery(query);
+            LOGGER.trace("Query: {} -- Internal topic query size: {} -- Query output size: {}",
+                    query, brokerQueryBins.get(i).getSize(), queryResults.size());
 
-                // FIXME - Adding debug statements for now
-                System.out.printf("Query: %s -- Internal topic query size: %s -- Query output size: %s%n",
-                        query, brokerQueryBins.get(i).getSize(), queryResults.size());
-
-                if (queryResults.size() >= MAX_SIZE) {
-                    throw new IllegalStateException("Topic query output was larger than the maximum "
-                            + "accepted query size.");
-                }
-            } catch (IOException e) {
-                // Note that we could throw an exception here, but we don't want
-                // to stop trying all future queries because this one query
-                // failed to run
-                LOGGER.error("Error when attempting to query NRQL for metrics.", e);
-                continue;
+            if (queryResults.size() >= MAX_SIZE) {
+                throw new IllegalStateException("Topic query output was larger than the maximum "
+                        + "accepted query size.");
             }
 
             for (NewRelicQueryResult result : queryResults) {
@@ -222,7 +212,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
                     // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
                     // this check here anyway to be safe
-                    LOGGER.trace("Invalid query result received from New Relic for topic query {}", query, e);
+                    LOGGER.error("Invalid query result received from New Relic for topic query {}", query, e);
                     counts.addResultsSkipped(1);
                 }
             }
@@ -247,25 +237,14 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
         for (int i = 0; i < partitionQueries.size(); i++) {
             String query = partitionQueries.get(i);
-            final List<NewRelicQueryResult> queryResults;
+            final List<NewRelicQueryResult> queryResults = _newRelicAdapter.runQuery(query);
 
-            try {
-                queryResults = _newRelicAdapter.runQuery(query);
+            LOGGER.trace("Query: {} -- Internal partition query size: {} -- Query output size: {}",
+                    query, topicQueryBins.get(i).getSize(), queryResults.size());
 
-                // FIXME - Adding debug statements for now
-                System.out.printf("Query: %s -- Internal partition query size: %s -- Query output size: %s%n",
-                        query, topicQueryBins.get(i).getSize(), queryResults.size());
-
-                if (queryResults.size() >= MAX_SIZE) {
-                    throw new IllegalStateException("Partition query output was larger than the maximum "
-                            + "accepted query size.");
-                }
-            } catch (IOException e) {
-                // Note that we could throw an exception here, but we don't want
-                // to stop trying all future queries because this one query
-                // failed to run
-                LOGGER.error("Error when attempting to query NRQL for metrics.", e);
-                continue;
+            if (queryResults.size() >= MAX_SIZE) {
+                throw new IllegalStateException("Partition query output was larger than the maximum "
+                        + "accepted query size.");
             }
 
             for (NewRelicQueryResult result : queryResults) {
@@ -275,7 +254,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     // Unlike PrometheusMetricSampler, this form of exception is probably very unlikely since
                     // we will be getting cleaned up and well formed data directly from NRDB, but just keeping
                     // this check here anyway to be safe
-                    LOGGER.trace("Invalid query result received from New Relic for partition query {}", query, e);
+                    LOGGER.error("Invalid query result received from New Relic for partition query {}", query, e);
                     counts.addResultsSkipped(1);
                 }
             }
@@ -422,8 +401,8 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                 NewRelicQueryBin newBin = (NewRelicQueryBin) binType.newInstance();
                 boolean addedToNewBin = newBin.addKafkaSize(kafkaSize);
                 if (!addedToNewBin) {
-                    LOGGER.error("Size object has too many items: {}",
-                            kafkaSize);
+                    throw new IllegalStateException(
+                            String.format("Kafka Size object has too many expected results: %s%n", kafkaSize));
                 } else {
                     queryBins.add(newBin);
                 }
