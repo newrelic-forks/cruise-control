@@ -307,14 +307,25 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      */
     private ArrayList<KafkaSize> getSortedBrokersByTopicCount(Cluster cluster) {
         ArrayList<KafkaSize> brokerSizes = new ArrayList<>();
-
+        HashMap<Integer, HashSet<String>> brokerToTopicsMap = new HashMap<>();
+        // Create all the hashsets
         for (Node node: cluster.nodes()) {
-            HashSet<String> topicsInNode = new HashSet<>();
+            brokerToTopicsMap.put(node.id(), new HashSet<>());
+        }
+
+        // Get the counts for each broker
+        for (Node node: cluster.nodes()) {
             List<PartitionInfo> partitions = cluster.partitionsForNode(node.id());
             for (PartitionInfo partition: partitions) {
-                topicsInNode.add(partition.topic());
+                for (Node replicaNode: partition.replicas()) {
+                    brokerToTopicsMap.get(replicaNode.id()).add(partition.topic());
+                }
             }
-            brokerSizes.add(new BrokerTopicCount(topicsInNode.size(), node.id()));
+        }
+
+        // Create the brokerTopicCount for each broker
+        for (Node node: cluster.nodes()) {
+            brokerSizes.add(new BrokerTopicCount(brokerToTopicsMap.get(node.id()).size(), node.id()));
         }
 
         Collections.sort(brokerSizes);
