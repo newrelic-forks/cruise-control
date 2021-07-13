@@ -201,6 +201,12 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     query, brokerQueryBins.get(i).getSize(), queryResults.size());
 
             if (queryResults.size() >= MAX_SIZE) {
+                for (NewRelicQueryResult result: queryResults) {
+                    System.out.printf("Query Result - Broker: %s, Topic: %s, " +
+                            "bytesInPerSec: %s, bytesOutPerSec: %s%n", result.getBrokerID(), result.getTopic(),
+                            result.getResults().get(RawMetricType.TOPIC_BYTES_IN),
+                            result.getResults().get(RawMetricType.TOPIC_BYTES_OUT));
+                }
                 throw new IllegalStateException(String.format("Topic query: %s output was larger: %s than the maximum "
                         + "accepted query size. Our expected size: %s",
                         query, queryResults.size(), brokerQueryBins.get(i).getSize()));
