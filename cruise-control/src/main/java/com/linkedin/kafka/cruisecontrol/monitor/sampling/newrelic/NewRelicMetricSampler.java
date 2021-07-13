@@ -57,7 +57,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
     // Config name visible to tests
     static final String NEWRELIC_ENDPOINT_CONFIG = "newrelic.endpoint";
-    static final String NEWRELIC_API_KEY_ENVIRONMENT = "NR_KPT_SUBACCOUNT_API_KEY";
+    static final String NEWRELIC_API_KEY_ENVIRONMENT = "NR_STAGING_ACCOUNT_1_API_KEY";
     static final String NEWRELIC_ACCOUNT_ID_CONFIG = "newrelic.account.id";
     static final String NEWRELIC_QUERY_LIMIT_CONFIG = "newrelic.query.limit";
     static final String CLUSTER_NAME_CONFIG = "newrelic.cell.name";
@@ -202,8 +202,8 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
             if (queryResults.size() >= MAX_SIZE) {
                 for (NewRelicQueryResult result: queryResults) {
-                    System.out.printf("Query Result - Broker: %s, Topic: %s, " +
-                            "bytesInPerSec: %s, bytesOutPerSec: %s%n", result.getBrokerID(), result.getTopic(),
+                    System.out.printf("Query Result - Broker: %s, Topic: %s, "
+                                    + "bytesInPerSec: %s, bytesOutPerSec: %s%n", result.getBrokerID(), result.getTopic(),
                             result.getResults().get(RawMetricType.TOPIC_BYTES_IN),
                             result.getResults().get(RawMetricType.TOPIC_BYTES_OUT));
                 }
