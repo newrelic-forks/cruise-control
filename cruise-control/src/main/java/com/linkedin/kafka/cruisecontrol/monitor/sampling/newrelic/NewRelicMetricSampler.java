@@ -201,8 +201,8 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     query, brokerQueryBins.get(i).getSize(), queryResults.size());
 
             if (queryResults.size() >= MAX_SIZE) {
-                throw new IllegalStateException("Topic query output was larger than the maximum "
-                        + "accepted query size.");
+                throw new IllegalStateException(String.format("Topic query: %s output was larger: %s than the maximum "
+                        + "accepted query size.", query, queryResults.size()));
             }
 
             for (NewRelicQueryResult result : queryResults) {
@@ -243,8 +243,8 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     query, topicQueryBins.get(i).getSize(), queryResults.size());
 
             if (queryResults.size() >= MAX_SIZE) {
-                throw new IllegalStateException("Partition query output was larger than the maximum "
-                        + "accepted query size.");
+                throw new IllegalStateException(String.format("Partition query: %s output was larger: %s than the maximum "
+                        + "accepted query size.", query, queryResults.size()));
             }
 
             for (NewRelicQueryResult result : queryResults) {
