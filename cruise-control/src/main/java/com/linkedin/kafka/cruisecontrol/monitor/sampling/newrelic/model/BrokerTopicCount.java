@@ -8,6 +8,8 @@ import java.util.Objects;
 
 /**
  * Used to store the number of topics in each broker in the cluster.
+ * A topic is in a broker if it has any replica of a partition in that
+ * broker. The replica does not need to be a leader replica.
  */
 public class BrokerTopicCount extends KafkaSize {
     private int _brokerId;
