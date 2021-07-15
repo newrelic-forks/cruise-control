@@ -151,8 +151,8 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     private static HttpEntity partitionResponse() {
         return new StringEntity("{\"data\":{\"actor\":{\"account\":{\"nrql\":{\"results\":[{\"facet\":"
-                + "[\"6\", \"test_topic1\", \"0\"], \"max.kafka_log_Log_Value_Size\":262.0}, "
-                + "{\"facet\":[\"5\", \"test_topic2\", \"14\"], \"max.kafka_log_Log_Value_Size\""
+                + "[\"6\", \"test_topic1\", \"0\"], \"max.partitionSize\":262.0}, "
+                + "{\"facet\":[\"5\", \"test_topic2\", \"14\"], \"max.partitionSize\""
                 + ":135.0}]}}}}}", StandardCharsets.UTF_8);
     }
 
