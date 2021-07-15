@@ -289,8 +289,8 @@ public class NewRelicMetricSamplerTest {
             expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
                     .andReturn(topicResults).atLeastOnce();
 
-            String beforePartitionRegex = String.format("FROM Metric SELECT max\\(kafka_log_Log_Value_Size\\) "
-                    + "WHERE entity.name = '%s' WHERE ", CLUSTER_NAME);
+            String beforePartitionRegex = String.format("FROM KafkaPartitionSizeStats SELECT max\\(partitionSize\\) "
+                    + "WHERE cluster = '%s' WHERE ", CLUSTER_NAME);
             String afterPartitionRegex = "FACET broker, topic, partition SINCE 1 minute ago LIMIT MAX";
             // regex portion can be 1. "topic IN ('topic1', 'topic2', ... 'topicN') "
             //                      2. "topic IN ('topic1', 'topic2', ... 'topicN')
