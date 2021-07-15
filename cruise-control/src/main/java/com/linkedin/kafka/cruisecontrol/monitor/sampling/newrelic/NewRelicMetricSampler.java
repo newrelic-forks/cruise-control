@@ -81,6 +81,12 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         configureQueries(configs);
     }
 
+    /**
+     * Sets up the queries by getting the max size for NRQL queries and the
+     * name of the cluster this is running on.
+     * @param configs - Must contain NEWRELIC_QUERY_LIMIT_CONFIG and CLUSTER_NAME_CONFIG
+     *                in order to configure queries properly.
+     */
     private void configureQueries(Map<String, ?> configs) {
         if (!configs.containsKey(NEWRELIC_QUERY_LIMIT_CONFIG)) {
             throw new ConfigException(String.format(
@@ -96,6 +102,14 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         CLUSTER_NAME = (String) configs.get(CLUSTER_NAME_CONFIG);
     }
 
+    /**
+     * Sets up the adapter which will be running queries on the new relic endpoint.
+     * @param configs - Must contain NEWRELIC_ENDPOINT_CONFIG and NEWRELIC_ACCOUNT_ID_CONFIG
+     *                to run properly.
+     *                (Optional) - Can contain NEWRELIC_API_KEY_ENVIRONMENT, but it is recommended
+     *                             to store that as a system environment variable so the key
+     *                             is not leaked.
+     */
     private void configureNewRelicAdapter(Map<String, ?> configs) {
         final String endpoint = (String) configs.get(NEWRELIC_ENDPOINT_CONFIG);
         if (endpoint == null) {
@@ -298,7 +312,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      * Goes through each broker in the cluster and
      * gets the number of topics in that broker sorted from least to greatest.
      * Note that if a topic has a replica in another broker,
-     * but no leader, it will not count for that topic being in the other broker.
+     * but no leader, it will still count for that topic being in the other broker.
      * We do make the assumption that no one broker will have more than MAX_SIZE
      * topics in it.
      * @param cluster - Cluster object containing information metadata this cluster.
