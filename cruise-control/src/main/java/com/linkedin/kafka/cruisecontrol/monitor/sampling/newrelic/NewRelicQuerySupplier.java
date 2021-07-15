@@ -168,6 +168,6 @@ public final class NewRelicQuerySupplier {
         TOPIC_METRICS.put("messagesInPerSec", TOPIC_MESSAGES_IN_PER_SEC);
 
         // partition level metrics
-        PARTITION_METRICS.put("kafka_log_Log_Value_Size", PARTITION_SIZE);
+        PARTITION_METRICS.put("partitionSize", PARTITION_SIZE);
     }
 }

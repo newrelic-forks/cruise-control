@@ -64,7 +64,7 @@ public class NewRelicQueryResult {
         // If facet is one item, this is a broker level query: facets = broker
         // If length of facets is 2, this is a topic level query: facets = [broker, topic]
         // If length of facets is 3, this is a partition level query: facets = [broker, topic, partition]
-        Map<String, RawMetricType> valueToMetricMap = NewRelicQuerySupplier.getBrokerMap();
+        Map<String, RawMetricType> valueToMetricMap;
         JsonNode facets = result.get(FACET_ATTR);
         if (facets.getNodeType() == JsonNodeType.ARRAY) {
             _brokerID = facets.get(0).asInt();
@@ -77,6 +77,7 @@ public class NewRelicQueryResult {
                 valueToMetricMap = NewRelicQuerySupplier.getTopicMap();
             }
         } else {
+            valueToMetricMap = NewRelicQuerySupplier.getBrokerMap();
             _brokerID = facets.asInt();
             _topic = null;
             _partition = -1;
