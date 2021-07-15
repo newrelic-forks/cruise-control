@@ -39,9 +39,9 @@ public final class NewRelicQuerySupplier {
             + "SINCE 1 minute ago "
             + "LIMIT MAX";
 
-    private static final String PARTITION_QUERY = "FROM Metric "
-            + "SELECT max(kafka_log_Log_Value_Size) "
-            + "WHERE entity.name = '%s' "
+    private static final String PARTITION_QUERY = "FROM KafkaPartitionSizeStats "
+            + "SELECT max(partitionSize) "
+            + "WHERE cluster = '%s' "
             + "WHERE %s "
             + "FACET broker, topic, partition "
             + "SINCE 1 minute ago "
