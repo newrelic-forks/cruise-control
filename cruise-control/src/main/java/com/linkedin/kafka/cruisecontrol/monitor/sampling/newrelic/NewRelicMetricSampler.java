@@ -57,7 +57,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
     // Config name visible to tests
     static final String NEWRELIC_ENDPOINT_CONFIG = "newrelic.endpoint";
-    static final String NEWRELIC_API_KEY_ENVIRONMENT = "NR_STAGING_ACCOUNT_1_API_KEY";
+    static final String NEWRELIC_API_KEY_ENVIRONMENT = "NR_API_KEY";
     static final String NEWRELIC_ACCOUNT_ID_CONFIG = "newrelic.account.id";
     static final String NEWRELIC_QUERY_LIMIT_CONFIG = "newrelic.query.limit";
     static final String CLUSTER_NAME_CONFIG = "newrelic.cell.name";
