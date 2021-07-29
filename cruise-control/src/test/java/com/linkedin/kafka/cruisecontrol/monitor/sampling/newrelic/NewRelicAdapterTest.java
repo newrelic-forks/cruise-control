@@ -14,6 +14,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.localserver.LocalServerTestBase;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.protocol.HttpRequestHandler;
+import org.junit.Before;
 import org.junit.Test;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -28,9 +29,19 @@ import static org.junit.Assert.assertTrue;
 public class NewRelicAdapterTest extends LocalServerTestBase {
     private static String CLUSTER_NAME = "kafka-test-cluster";
 
+    private NewRelicQuerySupplier _querySupplier = new DefaultNewRelicQuerySupplier();
+
+    /**
+     * Set up mocks
+     */
+    @Before
+    public void setUpQueryResult() {
+        NewRelicQueryResult.setupQuerySupplier(_querySupplier);
+    }
+
     @Test
     public void testBrokerQuery() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
+        String query = _querySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -74,7 +85,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test
     public void testTopicQuery() throws Exception {
-        String query = NewRelicQuerySupplier.topicQuery("", CLUSTER_NAME);
+        String query = _querySupplier.topicQuery("", CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -117,7 +128,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test
     public void testPartitionQuery() throws Exception {
-        String query = NewRelicQuerySupplier.partitionQuery("TestTopic", CLUSTER_NAME);
+        String query = _querySupplier.partitionQuery("TestTopic", CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -158,7 +169,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test(expected = IOException.class)
     public void testFailureResponseWith403Code() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
+        String query = _querySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -176,7 +187,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test(expected = IOException.class)
     public void testEmptyResponse() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
+        String query = _querySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -195,7 +206,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
 
     @Test(expected = IOException.class)
     public void testInvalidJSONResponse() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
+        String query = _querySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {
@@ -216,7 +227,7 @@ public class NewRelicAdapterTest extends LocalServerTestBase {
     // new metrics are added which will be the case given that the size of results is 0
     @Test
     public void testEmptyResults() throws Exception {
-        String query = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
+        String query = _querySupplier.brokerQuery(CLUSTER_NAME);
 
         this.serverBootstrap.registerHandler("*", new HttpRequestHandler() {
             @Override public void handle(HttpRequest request, HttpResponse response, HttpContext context) {

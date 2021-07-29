@@ -60,6 +60,8 @@ public class NewRelicMetricSamplerTest {
 
     private static String CLUSTER_NAME = "kafka-test-cluster";
 
+    private NewRelicQuerySupplier _querySupplier = new DefaultNewRelicQuerySupplier();
+
     /**
      * Set up mocks
      */
@@ -276,7 +278,7 @@ public class NewRelicMetricSamplerTest {
     private void setupNewRelicAdapterMock(List<NewRelicQueryResult> brokerResults,
                                           List<NewRelicQueryResult> topicResults,
                                           List<NewRelicQueryResult> partitionResults) throws Exception {
-            expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME))))
+            expect(_newRelicAdapter.runQuery(eq(_querySupplier.brokerQuery(CLUSTER_NAME))))
                     .andReturn(brokerResults);
 
             String beforeTopicRegex = String.format("FROM KafkaBrokerTopicStats SELECT max\\(messagesInPerSec\\), "
@@ -309,7 +311,7 @@ public class NewRelicMetricSamplerTest {
 
     private void setupNewRelicIllegalStateMock(List<NewRelicQueryResult> brokerResults,
                                                    List<NewRelicQueryResult> topicResults) throws Exception {
-        expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME))))
+        expect(_newRelicAdapter.runQuery(eq(_querySupplier.brokerQuery(CLUSTER_NAME))))
                 .andReturn(brokerResults);
 
         String beforeTopicRegex = String.format("FROM KafkaBrokerTopicStats SELECT max\\(messagesInPerSec\\), "
