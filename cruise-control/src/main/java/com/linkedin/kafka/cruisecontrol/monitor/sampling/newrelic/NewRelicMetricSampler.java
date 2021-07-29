@@ -4,7 +4,9 @@
 
 package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic;
 
+import com.linkedin.cruisecontrol.common.config.ConfigDef;
 import com.linkedin.cruisecontrol.common.config.ConfigException;
+import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfigUtils;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.BrokerMetric;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.PartitionMetric;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricType;
@@ -33,6 +35,8 @@ import java.util.Set;
 import java.util.List;
 import java.util.Collections;
 import java.util.HashMap;
+
+import static com.linkedin.cruisecontrol.common.config.ConfigDef.Type.CLASS;
 
 /**
  * Metric sampler that fetches Kafka metrics from the New Relic Database (NRDB).
@@ -75,6 +79,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     // this cruise control instance is running on
     private static String CLUSTER_NAME = "";
 
+    // Supplies all the queries we plan to run to fetch metrics from NRDB
     private NewRelicQuerySupplier _querySupplier;
 
     @Override
@@ -104,7 +109,26 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         }
         CLUSTER_NAME = (String) configs.get(CLUSTER_NAME_CONFIG);
 
-        _querySupplier = new DefaultNewRelicQuerySupplier();
+        // Get the new query supplier if it was passed in the config
+        String newRelicQuerySupplierClassName = (String) configs.get(NEWRELIC_QUERY_SUPPLIER_CONFIG);
+
+        // We default to the NewRelicQuerySupplier.class if NEWRELIC_QUERY_SUPPLIER_CONFIG is not in the config
+        Class<?> newRelicQuerySupplierClass = DefaultNewRelicQuerySupplier.class;
+        if (newRelicQuerySupplierClassName != null) {
+            newRelicQuerySupplierClass = (Class<?>) ConfigDef.parseType(NEWRELIC_QUERY_SUPPLIER_CONFIG,
+                    newRelicQuerySupplierClassName, CLASS);
+
+            // The class must implement the NewRelicQuerySupplier interface in order to be viable
+            if (!NewRelicQuerySupplier.class.isAssignableFrom(newRelicQuerySupplierClass)) {
+                throw new ConfigException(String.format(
+                        "Invalid %s is provided to New Relic metric sampler, provided %s",
+                        NEWRELIC_QUERY_SUPPLIER_CONFIG, newRelicQuerySupplierClass));
+            }
+        }
+
+        // Finally setup the query supplier that we are using with whatever class was given
+        _querySupplier = KafkaCruiseControlConfigUtils.getConfiguredInstance(
+                newRelicQuerySupplierClass, NewRelicQuerySupplier.class, Collections.emptyMap());
 
         // Setup our results to use whichever query supplier as
         // the supplier for the broker, topic, and partition maps

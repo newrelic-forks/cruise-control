@@ -126,6 +126,24 @@ public class NewRelicMetricSamplerTest {
         _newRelicMetricSampler.configure(config);
     }
 
+    @Test(expected = ConfigException.class)
+    public void testInvalidNewRelicQuerySupplierClassName() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        setConfigs(config, "5");
+        addCapacityConfig(config);
+        config.put(NEWRELIC_QUERY_SUPPLIER_CONFIG, "InvalidClass");
+        _newRelicMetricSampler.configure(config);
+    }
+
+    @Test(expected = ConfigException.class)
+    public void testInvalidNewRelicQuerySupplierClassType() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        setConfigs(config, "5");
+        addCapacityConfig(config);
+        config.put(NEWRELIC_QUERY_SUPPLIER_CONFIG, String.class.getName());
+        _newRelicMetricSampler.configure(config);
+    }
+
     @Test
     public void testGetSamplesSuccess() throws Exception {
         Map<String, Object> config = new HashMap<>();
@@ -252,6 +270,38 @@ public class NewRelicMetricSamplerTest {
         verify(_newRelicAdapter);
     }
 
+    @Test
+    public void testValidNewRelicQuerySupplierGet() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        setConfigs(config, "15");
+        addCapacityConfig(config);
+        config.put(NEWRELIC_QUERY_SUPPLIER_CONFIG, TestQuerySupplier.class.getName());
+        _newRelicMetricSampler.configure(config);
+        _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
+
+        ArrayList<String> topics = new ArrayList<>();
+        topics.add(TEST_TOPIC1);
+        topics.add(TEST_TOPIC2);
+        topics.add(TEST_TOPIC3);
+
+        ArrayList<Integer> partitions = new ArrayList<>();
+        partitions.add(3);
+        partitions.add(5);
+        partitions.add(1);
+
+        setUp();
+
+        MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(TOTAL_BROKERS, topics, partitions);
+        _newRelicMetricSampler.configure(config);
+        _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
+
+        setupTestAdapterMock();
+
+        replay(_newRelicAdapter);
+        _newRelicMetricSampler.getSamples(metricSamplerOptions);
+        verify(_newRelicAdapter);
+    }
+
     private static MetricSamplerOptions buildMetricSamplerOptions(int numBrokers,
                                                                   ArrayList<String> topics,
                                                                   ArrayList<Integer> partitions) {
@@ -325,6 +375,19 @@ public class NewRelicMetricSamplerTest {
         // Return too many results the first time
         expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
                 .andReturn(topicResults);
+    }
+
+    private void setupTestAdapterMock() throws Exception {
+        expect(_newRelicAdapter.runQuery(eq(TestQuerySupplier.TEST_BROKER_QUERY)))
+                .andReturn(new ArrayList<>());
+
+        expect(_newRelicAdapter.runQuery(eq(TestQuerySupplier.TEST_TOPIC_QUERY)))
+                .andReturn(new ArrayList<>())
+                .atLeastOnce();
+
+        expect(_newRelicAdapter.runQuery(eq(TestQuerySupplier.TEST_PARTITION_QUERY)))
+                .andReturn(new ArrayList<>())
+                .atLeastOnce();
     }
 
     private static List<NewRelicQueryResult> buildBrokerResults(int numBrokers) {
@@ -422,5 +485,44 @@ public class NewRelicMetricSamplerTest {
         }
         return new Cluster("cluster_id", Arrays.asList(allNodes),
                 partitionInfo, Collections.emptySet(), Collections.emptySet());
+    }
+
+    public static class TestQuerySupplier implements NewRelicQuerySupplier {
+
+        public static final String TEST_BROKER_QUERY = "test_broker_query";
+
+        public static final String TEST_TOPIC_QUERY = "test_topic_query";
+
+        public static final String TEST_PARTITION_QUERY = "test_partition_query";
+
+        @Override
+        public String brokerQuery(String clusterName) {
+            return TEST_BROKER_QUERY;
+        }
+
+        @Override
+        public String topicQuery(String brokerSelect, String clusterName) {
+            return TEST_TOPIC_QUERY;
+        }
+
+        @Override
+        public String partitionQuery(String whereClause, String clusterName) {
+            return TEST_PARTITION_QUERY;
+        }
+
+        @Override
+        public Map<String, RawMetricType> getBrokerMap() {
+            return new HashMap<>();
+        }
+
+        @Override
+        public Map<String, RawMetricType> getTopicMap() {
+            return new HashMap<>();
+        }
+
+        @Override
+        public Map<String, RawMetricType> getPartitionMap() {
+            return new HashMap<>();
+        }
     }
 }
