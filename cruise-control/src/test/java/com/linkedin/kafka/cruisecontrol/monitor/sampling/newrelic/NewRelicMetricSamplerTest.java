@@ -511,17 +511,17 @@ public class NewRelicMetricSamplerTest {
         }
 
         @Override
-        public Map<String, RawMetricType> getBrokerMap() {
+        public Map<String, RawMetricType> getUnmodifiableBrokerMap() {
             return new HashMap<>();
         }
 
         @Override
-        public Map<String, RawMetricType> getTopicMap() {
+        public Map<String, RawMetricType> getUnmodifiableTopicMap() {
             return new HashMap<>();
         }
 
         @Override
-        public Map<String, RawMetricType> getPartitionMap() {
+        public Map<String, RawMetricType> getUnmodifiablePartitionMap() {
             return new HashMap<>();
         }
     }

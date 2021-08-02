@@ -77,13 +77,13 @@ public class NewRelicQueryResult {
             _topic = facets.get(1).asText();
             if (facets.has(2)) {
                 _partition = facets.get(2).asInt();
-                valueToMetricMap = _querySupplier.getPartitionMap();
+                valueToMetricMap = _querySupplier.getUnmodifiablePartitionMap();
             } else {
                 _partition = -1;
-                valueToMetricMap = _querySupplier.getTopicMap();
+                valueToMetricMap = _querySupplier.getUnmodifiableTopicMap();
             }
         } else {
-            valueToMetricMap = _querySupplier.getBrokerMap();
+            valueToMetricMap = _querySupplier.getUnmodifiableBrokerMap();
             _brokerID = facets.asInt();
             _topic = null;
             _partition = -1;

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricType;
@@ -15,9 +16,13 @@ import static com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricT
  * stats which are used by cruise control.
  */
 public final class DefaultNewRelicQuerySupplier implements NewRelicQuerySupplier {
-    private static final HashMap<String, RawMetricType> BROKER_METRICS = new HashMap<>();
-    private static final HashMap<String, RawMetricType> TOPIC_METRICS = new HashMap<>();
-    private static final HashMap<String, RawMetricType> PARTITION_METRICS = new HashMap<>();
+    private static final Map<String, RawMetricType> BROKER_METRICS = new HashMap<>();
+    private static final Map<String, RawMetricType> TOPIC_METRICS = new HashMap<>();
+    private static final Map<String, RawMetricType> PARTITION_METRICS = new HashMap<>();
+
+    private static final Map<String, RawMetricType> UNMODIFIABLE_BROKER_MAP = Collections.unmodifiableMap(BROKER_METRICS);
+    private static final Map<String, RawMetricType> UNMODIFIABLE_TOPIC_MAP = Collections.unmodifiableMap(TOPIC_METRICS);
+    private static final Map<String, RawMetricType> UNMODIFIABLE_PARTITION_MAP = Collections.unmodifiableMap(PARTITION_METRICS);
 
     private static final String BROKER_QUERY = "FROM KafkaBrokerStats "
             + "SELECT %s "
@@ -43,6 +48,7 @@ public final class DefaultNewRelicQuerySupplier implements NewRelicQuerySupplier
             + "SINCE 1 minute ago "
             + "LIMIT MAX";
 
+    @Override
     public String brokerQuery(String clusterName) {
         return brokerQueryFormat(generateFeatures(BROKER_METRICS), clusterName);
     }
@@ -51,6 +57,7 @@ public final class DefaultNewRelicQuerySupplier implements NewRelicQuerySupplier
         return String.format(BROKER_QUERY, select, clusterName);
     }
 
+    @Override
     public String topicQuery(String brokerSelect, String clusterName) {
         return topicQueryFormat(generateFeatures(TOPIC_METRICS), brokerSelect, clusterName);
     }
@@ -59,20 +66,24 @@ public final class DefaultNewRelicQuerySupplier implements NewRelicQuerySupplier
         return String.format(TOPIC_QUERY, select, clusterName, brokerSelect);
     }
 
+    @Override
     public String partitionQuery(String whereClause, String clusterName) {
         return String.format(PARTITION_QUERY, clusterName, whereClause);
     }
 
-    public Map<String, RawMetricType> getBrokerMap() {
-        return BROKER_METRICS;
+    @Override
+    public Map<String, RawMetricType> getUnmodifiableBrokerMap() {
+        return UNMODIFIABLE_BROKER_MAP;
     }
 
-    public Map<String, RawMetricType> getTopicMap() {
-        return TOPIC_METRICS;
+    @Override
+    public Map<String, RawMetricType> getUnmodifiableTopicMap() {
+        return UNMODIFIABLE_TOPIC_MAP;
     }
 
-    public Map<String, RawMetricType> getPartitionMap() {
-        return PARTITION_METRICS;
+    @Override
+    public Map<String, RawMetricType> getUnmodifiablePartitionMap() {
+        return UNMODIFIABLE_PARTITION_MAP;
     }
 
     /**
