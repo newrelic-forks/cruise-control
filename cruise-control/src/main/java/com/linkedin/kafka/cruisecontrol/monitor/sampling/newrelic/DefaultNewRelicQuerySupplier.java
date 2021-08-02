@@ -16,13 +16,9 @@ import static com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricT
  * stats which are used by cruise control.
  */
 public final class DefaultNewRelicQuerySupplier implements NewRelicQuerySupplier {
-    private static final Map<String, RawMetricType> BROKER_METRICS = new HashMap<>();
-    private static final Map<String, RawMetricType> TOPIC_METRICS = new HashMap<>();
-    private static final Map<String, RawMetricType> PARTITION_METRICS = new HashMap<>();
-
-    private static final Map<String, RawMetricType> UNMODIFIABLE_BROKER_MAP = Collections.unmodifiableMap(BROKER_METRICS);
-    private static final Map<String, RawMetricType> UNMODIFIABLE_TOPIC_MAP = Collections.unmodifiableMap(TOPIC_METRICS);
-    private static final Map<String, RawMetricType> UNMODIFIABLE_PARTITION_MAP = Collections.unmodifiableMap(PARTITION_METRICS);
+    private static final Map<String, RawMetricType> UNMODIFIABLE_BROKER_MAP = buildBrokerMap();
+    private static final Map<String, RawMetricType> UNMODIFIABLE_TOPIC_MAP = buildTopicMap();
+    private static final Map<String, RawMetricType> UNMODIFIABLE_PARTITION_MAP = buildPartitionMap();
 
     private static final String BROKER_QUERY = "FROM KafkaBrokerStats "
             + "SELECT %s "
@@ -50,7 +46,7 @@ public final class DefaultNewRelicQuerySupplier implements NewRelicQuerySupplier
 
     @Override
     public String brokerQuery(String clusterName) {
-        return brokerQueryFormat(generateFeatures(BROKER_METRICS), clusterName);
+        return brokerQueryFormat(generateFeatures(UNMODIFIABLE_BROKER_MAP), clusterName);
     }
 
     private static String brokerQueryFormat(String select, String clusterName) {
@@ -59,7 +55,7 @@ public final class DefaultNewRelicQuerySupplier implements NewRelicQuerySupplier
 
     @Override
     public String topicQuery(String brokerSelect, String clusterName) {
-        return topicQueryFormat(generateFeatures(TOPIC_METRICS), brokerSelect, clusterName);
+        return topicQueryFormat(generateFeatures(UNMODIFIABLE_TOPIC_MAP), brokerSelect, clusterName);
     }
 
     private static String topicQueryFormat(String select, String brokerSelect, String clusterName) {
@@ -106,75 +102,91 @@ public final class DefaultNewRelicQuerySupplier implements NewRelicQuerySupplier
         return buffer.toString();
     }
 
-    static {
-        // broker level metrics
-        BROKER_METRICS.put("bytesInPerSec", ALL_TOPIC_BYTES_IN);
-        BROKER_METRICS.put("bytesOutPerSec", ALL_TOPIC_BYTES_OUT);
-        BROKER_METRICS.put("replicationBytesInPerSec", ALL_TOPIC_REPLICATION_BYTES_IN);
-        BROKER_METRICS.put("replicationBytesOutPerSec", ALL_TOPIC_REPLICATION_BYTES_OUT);
-        BROKER_METRICS.put("totalFetchRequestsPerSec", ALL_TOPIC_FETCH_REQUEST_RATE);
-        BROKER_METRICS.put("totalProduceRequestsPerSec", ALL_TOPIC_PRODUCE_REQUEST_RATE);
-        BROKER_METRICS.put("messagesInPerSec", ALL_TOPIC_MESSAGES_IN_PER_SEC);
-        BROKER_METRICS.put("cpuTotalUtilizationPercentage / 100", BROKER_CPU_UTIL);
-        BROKER_METRICS.put("produceRequestsPerSec", BROKER_PRODUCE_REQUEST_RATE);
-        BROKER_METRICS.put("fetchConsumerRequestsPerSec", BROKER_CONSUMER_FETCH_REQUEST_RATE);
-        BROKER_METRICS.put("fetchFollowerRequestsPerSec", BROKER_FOLLOWER_FETCH_REQUEST_RATE);
-        BROKER_METRICS.put("requestQueueSize", BROKER_REQUEST_QUEUE_SIZE);
-        BROKER_METRICS.put("responseQueueSize", BROKER_RESPONSE_QUEUE_SIZE);
-        BROKER_METRICS.put("produceQueueTimeMaxMs", BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MAX);
-        BROKER_METRICS.put("produceQueueTimeMeanMs", BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MEAN);
-        BROKER_METRICS.put("produceQueueTime50thPercentileMs", BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_50TH);
-        BROKER_METRICS.put("produceQueueTime999thPercentileMs", BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_999TH);
-        BROKER_METRICS.put("fetchConsumerQueueTimeMaxMs", BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MAX);
-        BROKER_METRICS.put("fetchConsumerQueueTimeMeanMs", BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN);
-        BROKER_METRICS.put("fetchConsumerQueueTime50thPercentileMs", BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_50TH);
-        BROKER_METRICS.put("fetchConsumerQueueTime999thPercentileMs", BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_999TH);
-        BROKER_METRICS.put("fetchFollowerQueueTimeMaxMs", BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MAX);
-        BROKER_METRICS.put("fetchFollowerQueueTimeMeanMs", BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN);
-        BROKER_METRICS.put("fetchFollowerQueueTime50thPercentileMs", BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_50TH);
-        BROKER_METRICS.put("fetchFollowerQueueTime999thPercentileMs", BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_999TH);
-        BROKER_METRICS.put("produceLocalTimeMaxMs", BROKER_PRODUCE_LOCAL_TIME_MS_MAX);
-        BROKER_METRICS.put("produceLocalTimeMeanMs", BROKER_PRODUCE_LOCAL_TIME_MS_MEAN);
-        BROKER_METRICS.put("produceLocalTime50thPercentileMs", BROKER_PRODUCE_LOCAL_TIME_MS_50TH);
-        BROKER_METRICS.put("produceLocalTime999thPercentileMs", BROKER_PRODUCE_LOCAL_TIME_MS_999TH);
-        BROKER_METRICS.put("fetchConsumerLocalTimeMaxMs", BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MAX);
-        BROKER_METRICS.put("fetchConsumerLocalTimeMeanMs", BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MEAN);
-        BROKER_METRICS.put("fetchConsumerLocalTime50thPercentileMs", BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_50TH);
-        BROKER_METRICS.put("fetchConsumerLocalTime999thPercentileMs", BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_999TH);
-        BROKER_METRICS.put("fetchFollowerLocalTimeMaxMs", BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MAX);
-        BROKER_METRICS.put("fetchFollowerLocalTimeMeanMs", BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MEAN);
-        BROKER_METRICS.put("fetchFollowerLocalTime50thPercentileMs", BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_50TH);
-        BROKER_METRICS.put("fetchFollowerLocalTime999thPercentileMs", BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_999TH);
-        BROKER_METRICS.put("produceLatencyMaxMs", BROKER_PRODUCE_TOTAL_TIME_MS_MAX);
-        BROKER_METRICS.put("produceLatencyMeanMs", BROKER_PRODUCE_TOTAL_TIME_MS_MEAN);
-        BROKER_METRICS.put("produceLatency50thPercentileMs", BROKER_PRODUCE_TOTAL_TIME_MS_50TH);
-        BROKER_METRICS.put("produceLatency999thPercentileMs", BROKER_PRODUCE_TOTAL_TIME_MS_999TH);
-        BROKER_METRICS.put("fetchConsumerLatencyMaxMs", BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MAX);
-        BROKER_METRICS.put("fetchConsumerLatencyMeanMs", BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MEAN);
-        BROKER_METRICS.put("fetchConsumerLatency50thPercentileMs", BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_50TH);
-        BROKER_METRICS.put("fetchConsumerLatency999thPercentileMs", BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_999TH);
-        BROKER_METRICS.put("fetchFollowerLatencyMaxMs", BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MAX);
-        BROKER_METRICS.put("fetchFollowerLatencyMeanMs", BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MEAN);
-        BROKER_METRICS.put("fetchFollowerLatency50thPercentileMs", BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_50TH);
-        BROKER_METRICS.put("fetchFollowerLatency999thPercentileMs", BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_999TH);
-        BROKER_METRICS.put("logFlushOneMinuteRateMs", BROKER_LOG_FLUSH_RATE);
-        BROKER_METRICS.put("logFlushMaxMs", BROKER_LOG_FLUSH_TIME_MS_MAX);
-        BROKER_METRICS.put("logFlushMeanMs", BROKER_LOG_FLUSH_TIME_MS_MEAN);
-        BROKER_METRICS.put("logFlush50thPercentileMs", BROKER_LOG_FLUSH_TIME_MS_50TH);
-        BROKER_METRICS.put("logFlush999thPercentileMs", BROKER_LOG_FLUSH_TIME_MS_999TH);
-        BROKER_METRICS.put("requestHandlerAvgIdlePercent", BROKER_REQUEST_HANDLER_AVG_IDLE_PERCENT);
+    private static Map<String, RawMetricType> buildBrokerMap() {
+        Map<String, RawMetricType> brokerMap = new HashMap<>();
+
+        // add in all the broker metrics
+        brokerMap.put("bytesInPerSec", ALL_TOPIC_BYTES_IN);
+        brokerMap.put("bytesOutPerSec", ALL_TOPIC_BYTES_OUT);
+        brokerMap.put("replicationBytesInPerSec", ALL_TOPIC_REPLICATION_BYTES_IN);
+        brokerMap.put("replicationBytesOutPerSec", ALL_TOPIC_REPLICATION_BYTES_OUT);
+        brokerMap.put("totalFetchRequestsPerSec", ALL_TOPIC_FETCH_REQUEST_RATE);
+        brokerMap.put("totalProduceRequestsPerSec", ALL_TOPIC_PRODUCE_REQUEST_RATE);
+        brokerMap.put("messagesInPerSec", ALL_TOPIC_MESSAGES_IN_PER_SEC);
+        brokerMap.put("cpuTotalUtilizationPercentage / 100", BROKER_CPU_UTIL);
+        brokerMap.put("produceRequestsPerSec", BROKER_PRODUCE_REQUEST_RATE);
+        brokerMap.put("fetchConsumerRequestsPerSec", BROKER_CONSUMER_FETCH_REQUEST_RATE);
+        brokerMap.put("fetchFollowerRequestsPerSec", BROKER_FOLLOWER_FETCH_REQUEST_RATE);
+        brokerMap.put("requestQueueSize", BROKER_REQUEST_QUEUE_SIZE);
+        brokerMap.put("responseQueueSize", BROKER_RESPONSE_QUEUE_SIZE);
+        brokerMap.put("produceQueueTimeMaxMs", BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MAX);
+        brokerMap.put("produceQueueTimeMeanMs", BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MEAN);
+        brokerMap.put("produceQueueTime50thPercentileMs", BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_50TH);
+        brokerMap.put("produceQueueTime999thPercentileMs", BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_999TH);
+        brokerMap.put("fetchConsumerQueueTimeMaxMs", BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MAX);
+        brokerMap.put("fetchConsumerQueueTimeMeanMs", BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN);
+        brokerMap.put("fetchConsumerQueueTime50thPercentileMs", BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_50TH);
+        brokerMap.put("fetchConsumerQueueTime999thPercentileMs", BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_999TH);
+        brokerMap.put("fetchFollowerQueueTimeMaxMs", BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MAX);
+        brokerMap.put("fetchFollowerQueueTimeMeanMs", BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN);
+        brokerMap.put("fetchFollowerQueueTime50thPercentileMs", BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_50TH);
+        brokerMap.put("fetchFollowerQueueTime999thPercentileMs", BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_999TH);
+        brokerMap.put("produceLocalTimeMaxMs", BROKER_PRODUCE_LOCAL_TIME_MS_MAX);
+        brokerMap.put("produceLocalTimeMeanMs", BROKER_PRODUCE_LOCAL_TIME_MS_MEAN);
+        brokerMap.put("produceLocalTime50thPercentileMs", BROKER_PRODUCE_LOCAL_TIME_MS_50TH);
+        brokerMap.put("produceLocalTime999thPercentileMs", BROKER_PRODUCE_LOCAL_TIME_MS_999TH);
+        brokerMap.put("fetchConsumerLocalTimeMaxMs", BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MAX);
+        brokerMap.put("fetchConsumerLocalTimeMeanMs", BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MEAN);
+        brokerMap.put("fetchConsumerLocalTime50thPercentileMs", BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_50TH);
+        brokerMap.put("fetchConsumerLocalTime999thPercentileMs", BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_999TH);
+        brokerMap.put("fetchFollowerLocalTimeMaxMs", BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MAX);
+        brokerMap.put("fetchFollowerLocalTimeMeanMs", BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MEAN);
+        brokerMap.put("fetchFollowerLocalTime50thPercentileMs", BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_50TH);
+        brokerMap.put("fetchFollowerLocalTime999thPercentileMs", BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_999TH);
+        brokerMap.put("produceLatencyMaxMs", BROKER_PRODUCE_TOTAL_TIME_MS_MAX);
+        brokerMap.put("produceLatencyMeanMs", BROKER_PRODUCE_TOTAL_TIME_MS_MEAN);
+        brokerMap.put("produceLatency50thPercentileMs", BROKER_PRODUCE_TOTAL_TIME_MS_50TH);
+        brokerMap.put("produceLatency999thPercentileMs", BROKER_PRODUCE_TOTAL_TIME_MS_999TH);
+        brokerMap.put("fetchConsumerLatencyMaxMs", BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MAX);
+        brokerMap.put("fetchConsumerLatencyMeanMs", BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MEAN);
+        brokerMap.put("fetchConsumerLatency50thPercentileMs", BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_50TH);
+        brokerMap.put("fetchConsumerLatency999thPercentileMs", BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_999TH);
+        brokerMap.put("fetchFollowerLatencyMaxMs", BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MAX);
+        brokerMap.put("fetchFollowerLatencyMeanMs", BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MEAN);
+        brokerMap.put("fetchFollowerLatency50thPercentileMs", BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_50TH);
+        brokerMap.put("fetchFollowerLatency999thPercentileMs", BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_999TH);
+        brokerMap.put("logFlushOneMinuteRateMs", BROKER_LOG_FLUSH_RATE);
+        brokerMap.put("logFlushMaxMs", BROKER_LOG_FLUSH_TIME_MS_MAX);
+        brokerMap.put("logFlushMeanMs", BROKER_LOG_FLUSH_TIME_MS_MEAN);
+        brokerMap.put("logFlush50thPercentileMs", BROKER_LOG_FLUSH_TIME_MS_50TH);
+        brokerMap.put("logFlush999thPercentileMs", BROKER_LOG_FLUSH_TIME_MS_999TH);
+        brokerMap.put("requestHandlerAvgIdlePercent", BROKER_REQUEST_HANDLER_AVG_IDLE_PERCENT);
+
+        return Collections.unmodifiableMap(brokerMap);
+    }
+
+    private static Map<String, RawMetricType> buildTopicMap() {
+        Map<String, RawMetricType> topicMap = new HashMap<>();
 
         // topic level metrics
-        TOPIC_METRICS.put("bytesInPerSec", TOPIC_BYTES_IN);
-        TOPIC_METRICS.put("bytesOutPerSec", TOPIC_BYTES_OUT);
+        topicMap.put("bytesInPerSec", TOPIC_BYTES_IN);
+        topicMap.put("bytesOutPerSec", TOPIC_BYTES_OUT);
         // We don't collect the following data on a topic level so I'm not including them
-        //TOPIC_METRICS.put("replicationBytesInPerSec", TOPIC_REPLICATION_BYTES_IN);
-        //TOPIC_METRICS.put("replicationBytesOutPerSec", TOPIC_REPLICATION_BYTES_OUT);
-        TOPIC_METRICS.put("totalFetchRequestsPerSec", TOPIC_FETCH_REQUEST_RATE);
-        TOPIC_METRICS.put("totalProduceRequestsPerSec", TOPIC_PRODUCE_REQUEST_RATE);
-        TOPIC_METRICS.put("messagesInPerSec", TOPIC_MESSAGES_IN_PER_SEC);
+        //topicMap.put("replicationBytesInPerSec", TOPIC_REPLICATION_BYTES_IN);
+        //topicMap.put("replicationBytesOutPerSec", TOPIC_REPLICATION_BYTES_OUT);
+        topicMap.put("totalFetchRequestsPerSec", TOPIC_FETCH_REQUEST_RATE);
+        topicMap.put("totalProduceRequestsPerSec", TOPIC_PRODUCE_REQUEST_RATE);
+        topicMap.put("messagesInPerSec", TOPIC_MESSAGES_IN_PER_SEC);
+
+        return Collections.unmodifiableMap(topicMap);
+    }
+
+    private static Map<String, RawMetricType> buildPartitionMap() {
+        Map<String, RawMetricType> partitionMap = new HashMap<>();
 
         // partition level metrics
-        PARTITION_METRICS.put("partitionSize", PARTITION_SIZE);
+        partitionMap.put("partitionSize", PARTITION_SIZE);
+
+        return Collections.unmodifiableMap(partitionMap);
     }
 }
