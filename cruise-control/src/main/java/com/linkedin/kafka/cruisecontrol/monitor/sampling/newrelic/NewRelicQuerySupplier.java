@@ -8,7 +8,8 @@ import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricType;
 import java.util.Map;
 
 /**
- *
+ * Supplies the different NRQL queries needed to be run in order to acquire
+ * the necessary broker, topic, and partition level cruise control metrics from NRDB.
  */
 public interface NewRelicQuerySupplier {
     /**
