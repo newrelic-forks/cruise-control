@@ -60,6 +60,8 @@ public class NewRelicMetricSamplerTest {
 
     private static String CLUSTER_NAME = "kafka-test-cluster";
 
+    private NewRelicQuerySupplier _querySupplier = new DefaultNewRelicQuerySupplier();
+
     /**
      * Set up mocks
      */
@@ -121,6 +123,24 @@ public class NewRelicMetricSamplerTest {
         config.put(NEWRELIC_ACCOUNT_ID_CONFIG, "1");
         config.put(CLUSTER_NAME_CONFIG, CLUSTER_NAME);
         config.put(NEWRELIC_API_KEY_ENVIRONMENT, "ABC");
+        _newRelicMetricSampler.configure(config);
+    }
+
+    @Test(expected = ConfigException.class)
+    public void testInvalidNewRelicQuerySupplierClassName() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        setConfigs(config, "5");
+        addCapacityConfig(config);
+        config.put(NEWRELIC_QUERY_SUPPLIER_CONFIG, "InvalidClass");
+        _newRelicMetricSampler.configure(config);
+    }
+
+    @Test(expected = ConfigException.class)
+    public void testInvalidNewRelicQuerySupplierClassType() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        setConfigs(config, "5");
+        addCapacityConfig(config);
+        config.put(NEWRELIC_QUERY_SUPPLIER_CONFIG, String.class.getName());
         _newRelicMetricSampler.configure(config);
     }
 
@@ -250,6 +270,38 @@ public class NewRelicMetricSamplerTest {
         verify(_newRelicAdapter);
     }
 
+    @Test
+    public void testValidNewRelicQuerySupplierGet() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        setConfigs(config, "15");
+        addCapacityConfig(config);
+        config.put(NEWRELIC_QUERY_SUPPLIER_CONFIG, TestQuerySupplier.class.getName());
+        _newRelicMetricSampler.configure(config);
+        _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
+
+        ArrayList<String> topics = new ArrayList<>();
+        topics.add(TEST_TOPIC1);
+        topics.add(TEST_TOPIC2);
+        topics.add(TEST_TOPIC3);
+
+        ArrayList<Integer> partitions = new ArrayList<>();
+        partitions.add(3);
+        partitions.add(5);
+        partitions.add(1);
+
+        setUp();
+
+        MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(TOTAL_BROKERS, topics, partitions);
+        _newRelicMetricSampler.configure(config);
+        _newRelicMetricSampler._newRelicAdapter = _newRelicAdapter;
+
+        setupTestAdapterMock();
+
+        replay(_newRelicAdapter);
+        _newRelicMetricSampler.getSamples(metricSamplerOptions);
+        verify(_newRelicAdapter);
+    }
+
     private static MetricSamplerOptions buildMetricSamplerOptions(int numBrokers,
                                                                   ArrayList<String> topics,
                                                                   ArrayList<Integer> partitions) {
@@ -276,7 +328,7 @@ public class NewRelicMetricSamplerTest {
     private void setupNewRelicAdapterMock(List<NewRelicQueryResult> brokerResults,
                                           List<NewRelicQueryResult> topicResults,
                                           List<NewRelicQueryResult> partitionResults) throws Exception {
-            expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME))))
+            expect(_newRelicAdapter.runQuery(eq(_querySupplier.brokerQuery(CLUSTER_NAME))))
                     .andReturn(brokerResults);
 
             String beforeTopicRegex = String.format("FROM KafkaBrokerTopicStats SELECT max\\(messagesInPerSec\\), "
@@ -309,7 +361,7 @@ public class NewRelicMetricSamplerTest {
 
     private void setupNewRelicIllegalStateMock(List<NewRelicQueryResult> brokerResults,
                                                    List<NewRelicQueryResult> topicResults) throws Exception {
-        expect(_newRelicAdapter.runQuery(eq(NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME))))
+        expect(_newRelicAdapter.runQuery(eq(_querySupplier.brokerQuery(CLUSTER_NAME))))
                 .andReturn(brokerResults);
 
         String beforeTopicRegex = String.format("FROM KafkaBrokerTopicStats SELECT max\\(messagesInPerSec\\), "
@@ -323,6 +375,19 @@ public class NewRelicMetricSamplerTest {
         // Return too many results the first time
         expect(_newRelicAdapter.runQuery(matches(topicMatcher)))
                 .andReturn(topicResults);
+    }
+
+    private void setupTestAdapterMock() throws Exception {
+        expect(_newRelicAdapter.runQuery(eq(TestQuerySupplier.TEST_BROKER_QUERY)))
+                .andReturn(new ArrayList<>());
+
+        expect(_newRelicAdapter.runQuery(eq(TestQuerySupplier.TEST_TOPIC_QUERY)))
+                .andReturn(new ArrayList<>())
+                .atLeastOnce();
+
+        expect(_newRelicAdapter.runQuery(eq(TestQuerySupplier.TEST_PARTITION_QUERY)))
+                .andReturn(new ArrayList<>())
+                .atLeastOnce();
     }
 
     private static List<NewRelicQueryResult> buildBrokerResults(int numBrokers) {
@@ -420,5 +485,44 @@ public class NewRelicMetricSamplerTest {
         }
         return new Cluster("cluster_id", Arrays.asList(allNodes),
                 partitionInfo, Collections.emptySet(), Collections.emptySet());
+    }
+
+    public static class TestQuerySupplier implements NewRelicQuerySupplier {
+
+        public static final String TEST_BROKER_QUERY = "test_broker_query";
+
+        public static final String TEST_TOPIC_QUERY = "test_topic_query";
+
+        public static final String TEST_PARTITION_QUERY = "test_partition_query";
+
+        @Override
+        public String brokerQuery(String clusterName) {
+            return TEST_BROKER_QUERY;
+        }
+
+        @Override
+        public String topicQuery(String brokerSelect, String clusterName) {
+            return TEST_TOPIC_QUERY;
+        }
+
+        @Override
+        public String partitionQuery(String whereClause, String clusterName) {
+            return TEST_PARTITION_QUERY;
+        }
+
+        @Override
+        public Map<String, RawMetricType> getUnmodifiableBrokerMap() {
+            return new HashMap<>();
+        }
+
+        @Override
+        public Map<String, RawMetricType> getUnmodifiableTopicMap() {
+            return new HashMap<>();
+        }
+
+        @Override
+        public Map<String, RawMetricType> getUnmodifiablePartitionMap() {
+            return new HashMap<>();
+        }
     }
 }

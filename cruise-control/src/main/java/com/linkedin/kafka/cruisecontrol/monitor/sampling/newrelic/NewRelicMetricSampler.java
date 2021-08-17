@@ -4,7 +4,9 @@
 
 package com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic;
 
+import com.linkedin.cruisecontrol.common.config.ConfigDef;
 import com.linkedin.cruisecontrol.common.config.ConfigException;
+import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfigUtils;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.BrokerMetric;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.PartitionMetric;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricType;
@@ -34,6 +36,8 @@ import java.util.List;
 import java.util.Collections;
 import java.util.HashMap;
 
+import static com.linkedin.cruisecontrol.common.config.ConfigDef.Type.CLASS;
+
 /**
  * Metric sampler that fetches Kafka metrics from the New Relic Database (NRDB).
  *
@@ -61,6 +65,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     static final String NEWRELIC_ACCOUNT_ID_CONFIG = "newrelic.account.id";
     static final String NEWRELIC_QUERY_LIMIT_CONFIG = "newrelic.query.limit";
     static final String CLUSTER_NAME_CONFIG = "newrelic.cell.name";
+    static final String NEWRELIC_QUERY_SUPPLIER_CONFIG = "newrelic.query.supplier";
 
     // We make this protected so we can set it during the tests
     protected NewRelicAdapter _newRelicAdapter;
@@ -73,6 +78,9 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     // Currently we are hardcoding this in -> later need to make it specific to whatever cluster
     // this cruise control instance is running on
     private static String CLUSTER_NAME = "";
+
+    // Supplies all the queries we plan to run to fetch metrics from NRDB
+    private NewRelicQuerySupplier _querySupplier;
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -100,6 +108,31 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
                     "%s config is required to have the cluster name", CLUSTER_NAME_CONFIG));
         }
         CLUSTER_NAME = (String) configs.get(CLUSTER_NAME_CONFIG);
+
+        // Get the new query supplier if it was passed in the config
+        String newRelicQuerySupplierClassName = (String) configs.get(NEWRELIC_QUERY_SUPPLIER_CONFIG);
+
+        // We default to the NewRelicQuerySupplier.class if NEWRELIC_QUERY_SUPPLIER_CONFIG is not in the config
+        Class<?> newRelicQuerySupplierClass = DefaultNewRelicQuerySupplier.class;
+        if (newRelicQuerySupplierClassName != null) {
+            newRelicQuerySupplierClass = (Class<?>) ConfigDef.parseType(NEWRELIC_QUERY_SUPPLIER_CONFIG,
+                    newRelicQuerySupplierClassName, CLASS);
+
+            // The class must implement the NewRelicQuerySupplier interface in order to be viable
+            if (!NewRelicQuerySupplier.class.isAssignableFrom(newRelicQuerySupplierClass)) {
+                throw new ConfigException(String.format(
+                        "Invalid %s is provided to New Relic metric sampler, provided %s",
+                        NEWRELIC_QUERY_SUPPLIER_CONFIG, newRelicQuerySupplierClass));
+            }
+        }
+
+        // Finally setup the query supplier that we are using with whatever class was given
+        _querySupplier = KafkaCruiseControlConfigUtils.getConfiguredInstance(
+                newRelicQuerySupplierClass, NewRelicQuerySupplier.class, Collections.emptyMap());
+
+        // Setup our results to use whichever query supplier as
+        // the supplier for the broker, topic, and partition maps
+        NewRelicQueryResult.setupQuerySupplier(_querySupplier);
     }
 
     /**
@@ -135,7 +168,6 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
         _httpClient = HttpClients.createDefault();
         _newRelicAdapter = new NewRelicAdapter(_httpClient, endpoint, accountId, apiKey);
-
     }
 
     /**
@@ -172,7 +204,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      */
     private void runBrokerQueries(ResultCounts counts) throws Exception {
         // Run our broker query first
-        final String brokerQuery = NewRelicQuerySupplier.brokerQuery(CLUSTER_NAME);
+        final String brokerQuery = _querySupplier.brokerQuery(CLUSTER_NAME);
         final List<NewRelicQueryResult> brokerResults = _newRelicAdapter.runQuery(brokerQuery);
 
         for (NewRelicQueryResult result : brokerResults) {
@@ -449,10 +481,10 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         // When every broker is in one bin, we don't need to include the "WHERE broker IN"
         // and can just select every broker
         if (queryBins.size() == 1) {
-            queries.add(NewRelicQuerySupplier.topicQuery("", CLUSTER_NAME));
+            queries.add(_querySupplier.topicQuery("", CLUSTER_NAME));
         } else {
             for (NewRelicQueryBin queryBin : queryBins) {
-                queries.add(NewRelicQuerySupplier.topicQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
+                queries.add(_querySupplier.topicQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
             }
         }
         return queries;
@@ -469,7 +501,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     private List<String> getPartitionQueries(List<NewRelicQueryBin> queryBins) {
         List<String> queries = new ArrayList<>();
         for (NewRelicQueryBin queryBin: queryBins) {
-            queries.add(NewRelicQuerySupplier.partitionQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
+            queries.add(_querySupplier.partitionQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
         }
         return queries;
     }
