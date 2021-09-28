@@ -41,9 +41,9 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.MIN_NUM_
  * {@link RackAwareDistributionGoal}.
  *
  * This goal will throw an {@link OptimizationFailureException} if it gets stuck trying to find a solution. However, due
- * to the random nature of how how it selects which balancing actions to attempt, it is possible that the isn't
- * impossible to satisfy but that it simply got itself stuck in a state in which it cannot find a valid next move to
- * enact.
+ * to the random nature of how it selects which balancing actions to attempt, it is possible that the goal isn't
+ * actually impossible to satisfy but that it simply got itself stuck in a state in which it cannot find a valid next
+ * move to enact.
  */
 public class TopicLeadershipDistributionGoal extends AbstractGoal {
     private static final Logger LOG = LoggerFactory.getLogger(TopicLeadershipDistributionGoal.class);
