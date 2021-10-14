@@ -268,6 +268,8 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             logAndThrowOptimizationFailureException("Cannot take any action as all alive brokers are excluded from leadership.");
         }
 
+        _targetNumLeadReplicasPerRackByTopic.clear();
+        _numLeadReplicasByTopicByRackId.clear();
         _targetNumLeadReplicasPerBrokerByTopic.clear();
         _numLeadReplicasByTopicByBrokerId.clear();
 
@@ -432,6 +434,11 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             switch (_rebalancePhase) {
                 case PER_RACK:
                     LOG.trace("Re-balancing for broker {} in rack {} and topic {}", broker.id(), broker.rack().id(), topic);
+
+                    // FIXME
+                    if (topic.equals("event_batches")) {
+                        LOG.info(prettyPrintedLeadershipDistributionByRack(clusterModel, topic));
+                    }
 
                     if (!isTopicBalancedPerRack(clusterModel, topic)) {
                         int numLeadReplicasInRack = _numLeadReplicasByTopicByRackId
