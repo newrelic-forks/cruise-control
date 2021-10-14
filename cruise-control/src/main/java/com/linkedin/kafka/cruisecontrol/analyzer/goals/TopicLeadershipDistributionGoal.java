@@ -41,16 +41,17 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.MIN_NUM_
  * {@link RackAwareDistributionGoal}.
  *
  * This goal will throw an {@link OptimizationFailureException} if it gets stuck trying to find a solution. However, due
- * to the random nature of how how it selects which balancing actions to attempt, it is possible that the isn't
- * impossible to satisfy but that it simply got itself stuck in a state in which it cannot find a valid next move to
- * enact.
+ * to the random nature of how it selects which balancing actions to attempt, it is possible that the goal isn't
+ * actually impossible to satisfy but that it simply got itself stuck in a state in which it cannot find a valid next
+ * move to enact.
  */
 public class TopicLeadershipDistributionGoal extends AbstractGoal {
     private static final Logger LOG = LoggerFactory.getLogger(TopicLeadershipDistributionGoal.class);
 
     private static final Random RANDOM = new Random();
 
-    private enum RebalancePhase { PER_RACK, PER_BROKER }
+    private enum RebalancePhase {PER_RACK, PER_BROKER}
+
     private RebalancePhase _rebalancePhase;
 
     private Set<String> _allowedTopics;
@@ -148,7 +149,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     /**
      * Summarizes leadership counts on a per-rack and per-broker basis.
      */
-    private static class LeadershipCounts {
+    private static final class LeadershipCounts {
         private final Set<Broker> _allowedBrokers;
         private final Set<Rack> _allowedRacks;
 
@@ -229,7 +230,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
      * need to check that any previously-completed phases remain satisfied.
      *
      * @param clusterModel The state of the cluster.
-     * @param action Action containing information about potential modification to the given cluster model.
+     * @param action       Action containing information about potential modification to the given cluster model.
      * @return True if the balancing action is considered valid; false otherwise
      */
     protected boolean selfSatisfied(ClusterModel clusterModel, BalancingAction action) {
@@ -264,8 +265,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 .collect(Collectors.toCollection(HashSet::new));
 
         if (_allowedBrokerIds.isEmpty()) {
-            throw new OptimizationFailureException(
-                    "Cannot take any action as all alive brokers are excluded from leadership.");
+            logAndThrowOptimizationFailureException("Cannot take any action as all alive brokers are excluded from leadership.");
         }
 
         _targetNumLeadReplicasPerBrokerByTopic.clear();
@@ -315,7 +315,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
      * {@link RebalancePhase#PER_BROKER} as well as determining when the goal is satisfied and calling
      * {@link #finish()} at the end.
      *
-     * @param clusterModel The state of the cluster.
+     * @param clusterModel        The state of the cluster.
      * @param optimizationOptions Options to take into account during optimization.
      */
     @Override
@@ -408,7 +408,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 }
             }
 
-            throw new OptimizationFailureException("Unable to solve for this goal; remaining imbalanced topics:\n\n" + s);
+            logAndThrowOptimizationFailureException("Unable to solve for this goal; remaining imbalanced topics:\n\n" + s);
         }
 
         _previousTotalDelta = totalDelta;
@@ -476,6 +476,9 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     /**
      * This method works similarly to {@link #isTopicBalancedPerBroker(String topic)} but on a per-rack basis instead
      * of a per-broker basis.
+     *
+     * @param clusterModel {@link ClusterModel}
+     * @param topic the topic to check
      *
      * @return true if topic is balanced per rack; false otherwise
      * @see #isTopicBalancedPerBroker(String)
@@ -845,5 +848,10 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         return leader.id() + " [" + leader.rack().id() + "],"
                 + followers.stream().map(f -> f.id() + " [" + f.rack().id() + "]")
                 .collect(Collectors.joining(","));
+    }
+
+    private void logAndThrowOptimizationFailureException(final String message) throws OptimizationFailureException {
+        LOG.error(message);
+        throw new OptimizationFailureException(message);
     }
 }
