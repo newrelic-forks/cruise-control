@@ -50,7 +50,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
     private static final Random RANDOM = new Random();
 
-    private enum RebalancePhase {PER_RACK, PER_BROKER}
+    private enum RebalancePhase { PER_RACK, PER_BROKER }
 
     private RebalancePhase _rebalancePhase;
 
@@ -240,7 +240,10 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 return true;
             case PER_BROKER:
                 // The only previous phase is the PER_RACK phase, so we check that the topic is still balanced per rack.
-                return isTopicBalancedPerRack(clusterModel, action.topic());
+                Broker sourceBroker = clusterModel.broker(action.sourceBrokerId());
+                Broker destinationBroker = clusterModel.broker(action.destinationBrokerId());
+
+                return isTopicBalancedPerRack(clusterModel, action.topic(), sourceBroker.rack().id(), destinationBroker.rack().id());
             default:
                 throw new IllegalStateException("Unknown rebalance phase: " + _rebalancePhase);
         }
@@ -431,15 +434,15 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                     .filter(Replica::isLeader)
                     .collect(Collectors.toSet());
 
+            // FIXME
+            if (topic.equals("event_batches")) {
+                LOG.info(prettyPrintedLeadershipDistributionByRack(clusterModel, topic));
+                LOG.info(prettyPrintedLeadershipDistributionByBroker(clusterModel, topic));
+            }
+
             switch (_rebalancePhase) {
                 case PER_RACK:
                     LOG.trace("Re-balancing for broker {} in rack {} and topic {}", broker.id(), broker.rack().id(), topic);
-
-                    // FIXME
-                    if (topic.equals("event_batches")) {
-                        LOG.info(prettyPrintedLeadershipDistributionByRack(clusterModel, topic));
-                        LOG.info(prettyPrintedLeadershipDistributionByBroker(clusterModel, topic));
-                    }
 
                     if (!isTopicBalancedPerRack(clusterModel, topic)) {
                         int numLeadReplicasInRack = _numLeadReplicasByTopicByRackId
@@ -481,17 +484,30 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         }
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+    private boolean isTopicBalancedPerRack(ClusterModel clusterModel, String topic) {
+        return isTopicBalancedPerRack(clusterModel, topic, null, null);
+    }
+
     /**
      * This method works similarly to {@link #isTopicBalancedPerBroker(String topic)} but on a per-rack basis instead
      * of a per-broker basis.
      *
      * @param clusterModel {@link ClusterModel}
      * @param topic the topic to check
+     * @param sourceRackId if considering a proposed action, this is the rack the lead replica is moving from (null if
+     *                     not considering a proposed action)
+     * @param destinationRackId if considering a proposed action, this is the rack the lead replica is moving to (null
+     *                          if not considering a proposed action)
      *
      * @return true if topic is balanced per rack; false otherwise
      * @see #isTopicBalancedPerBroker(String)
      */
-    private boolean isTopicBalancedPerRack(ClusterModel clusterModel, String topic) {
+    private boolean isTopicBalancedPerRack(
+            ClusterModel clusterModel,
+            String topic,
+            String sourceRackId,
+            String destinationRackId) {
         Map<String, Integer> numLeadReplicasByRackId = _numLeadReplicasByTopicByRackId.get(topic);
         Integer target = _targetNumLeadReplicasPerRackByTopic.get(topic);
 
@@ -501,6 +517,13 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
         for (String rackId : rackIds) {
             int numLeadReplicas = numLeadReplicasByRackId.getOrDefault(rackId, 0);
+
+            if (rackId.equals(sourceRackId)) {
+                numLeadReplicas--;
+            }
+            if (rackId.equals(destinationRackId)) {
+                numLeadReplicas++;
+            }
 
             if (numLeadReplicas < target || numLeadReplicas > target + 1) {
                 return false;
@@ -658,8 +681,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                     }
                 }
 
-                // Whether or not we're successful moving leadership of this replica, we don't want to attempt it
-                // again.
+                // Whether we're successful moving leadership of this replica, we don't want to attempt it again.
                 leaderReplicas.remove(leaderReplica);
             }
         }
