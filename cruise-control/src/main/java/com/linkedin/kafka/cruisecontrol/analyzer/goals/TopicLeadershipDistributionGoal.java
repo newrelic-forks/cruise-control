@@ -438,6 +438,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                     // FIXME
                     if (topic.equals("event_batches")) {
                         LOG.info(prettyPrintedLeadershipDistributionByRack(clusterModel, topic));
+                        LOG.info(prettyPrintedLeadershipDistributionByBroker(clusterModel, topic));
                     }
 
                     if (!isTopicBalancedPerRack(clusterModel, topic)) {
