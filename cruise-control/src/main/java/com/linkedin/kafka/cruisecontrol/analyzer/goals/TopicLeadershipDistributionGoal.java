@@ -89,8 +89,8 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         String topic = action.topic();
 
         if (!_allowedTopics.contains(topic)) {
-            // If the topic in question is not an allowed topic, we're not attempting to balance it using this goal
-            // so we'll give a blanket approval here.
+            // If the topic in question is not an allowed topic, we're not attempting to balance it using this goal;
+            // we'll give a blanket approval here.
             return ActionAcceptance.ACCEPT;
         }
 
@@ -102,10 +102,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         if (replica == null) {
             // Source replica does not exist so this is definitely not a valid move.
             return ActionAcceptance.REPLICA_REJECT;
-        } else if (!replica.isLeader()) {
-            // This goal does not care about follower replica counts so any movement of follower replicas are
-            // automatically acceptable.
-            return ActionAcceptance.ACCEPT;
         }
 
         boolean isTopicBalanced = true;
@@ -118,11 +114,13 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 || actionType.equals(ActionType.INTER_BROKER_REPLICA_SWAP)) {
             LeadershipCounts counts = new LeadershipCounts(clusterModel, _allowedBrokerIds, topic);
 
-            counts.decrementCount(sourceBroker);
-            counts.incrementCount(destinationBroker);
+            if (replica.isLeader()) {
+                counts.decrementCount(sourceBroker);
+                counts.incrementCount(destinationBroker);
 
-            isTopicBalanced = counts.isBalancedByRack(_targetNumLeadReplicasPerRackByTopic.get(topic))
-                    && counts.isBalancedByBroker(_targetNumLeadReplicasPerBrokerByTopic.get(topic));
+                isTopicBalanced = counts.isBalancedByRack(_targetNumLeadReplicasPerRackByTopic.get(topic))
+                        && counts.isBalancedByBroker(_targetNumLeadReplicasPerBrokerByTopic.get(topic));
+            }
 
             if (actionType.equals(ActionType.INTER_BROKER_REPLICA_SWAP)) {
                 String otherTopic = action.destinationTopic();
@@ -308,8 +306,8 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             _numLeadReplicasByTopicByRackId.put(topic, numLeadReplicasPerRack);
             _numLeadReplicasByTopicByBrokerId.put(topic, numLeadReplicasPerBroker);
 
-            LOG.info("Targeting {}(+1) lead replicas per rack for topic {}", targetNumLeadReplicasPerRack, topic);
-            LOG.info("Targeting {}(+1) lead replicas per broker for topic {}", targetNumLeadReplicasPerBroker, topic);
+            LOG.debug("Targeting {}(+1) lead replicas per rack for topic {}", targetNumLeadReplicasPerRack, topic);
+            LOG.debug("Targeting {}(+1) lead replicas per broker for topic {}", targetNumLeadReplicasPerBroker, topic);
         }
 
         _previousTotalDelta = Integer.MAX_VALUE;
@@ -433,12 +431,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             Collection<Replica> leaderReplicas = broker.replicasOfTopicInBroker(topic).stream()
                     .filter(Replica::isLeader)
                     .collect(Collectors.toSet());
-
-            // FIXME
-            if (topic.equals("event_batches")) {
-                LOG.info(prettyPrintedLeadershipDistributionByRack(clusterModel, topic));
-                LOG.info(prettyPrintedLeadershipDistributionByBroker(clusterModel, topic));
-            }
 
             switch (_rebalancePhase) {
                 case PER_RACK:

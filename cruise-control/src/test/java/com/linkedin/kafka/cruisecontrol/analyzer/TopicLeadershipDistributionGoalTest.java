@@ -7,7 +7,6 @@ package com.linkedin.kafka.cruisecontrol.analyzer;
 import com.linkedin.cruisecontrol.monitor.sampling.aggregator.AggregatedMetricValues;
 import com.linkedin.cruisecontrol.monitor.sampling.aggregator.MetricValues;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
-import com.linkedin.kafka.cruisecontrol.analyzer.goals.RackAwareGoal;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.TopicLeadershipDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.common.TestConstants;
@@ -27,7 +26,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC0;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC1;
@@ -47,17 +45,10 @@ public class TopicLeadershipDistributionGoalTest {
     public void testOptimize() throws KafkaCruiseControlException {
         ClusterModel clusterModel = generateClusterModel();
 
-        // TopicLeadershipDistributionGoal assumes RackAwareGoal has already run.
-        Goal rackAwareGoal = initializeGoal(new RackAwareGoal());
-        rackAwareGoal.optimize(
-                clusterModel,
-                Collections.emptySet(),
-                new OptimizationOptions(Collections.emptySet(), Collections.emptySet(), Collections.emptySet()));
-
         Goal goal = initializeGoal(new TopicLeadershipDistributionGoal());
         goal.optimize(
                 clusterModel,
-                Set.of(rackAwareGoal),
+                Collections.emptySet(),
                 new OptimizationOptions(Collections.emptySet(), Collections.emptySet(), Collections.emptySet()));
 
         Map<String, List<Partition>> partitionsByTopic = clusterModel.getPartitionsByTopic();
@@ -101,17 +92,10 @@ public class TopicLeadershipDistributionGoalTest {
     public void testActionAcceptance() throws KafkaCruiseControlException {
         ClusterModel clusterModel = generateClusterModel();
 
-        // TopicLeadershipDistributionGoal assumes RackAwareGoal has already run.
-        Goal rackAwareGoal = initializeGoal(new RackAwareGoal());
-        rackAwareGoal.optimize(
-                clusterModel,
-                Collections.emptySet(),
-                new OptimizationOptions(Collections.emptySet(), Collections.emptySet(), Collections.emptySet()));
-
         Goal goal = initializeGoal(new TopicLeadershipDistributionGoal());
         goal.optimize(
                 clusterModel,
-                Set.of(rackAwareGoal),
+                Collections.emptySet(),
                 new OptimizationOptions(Collections.emptySet(), Collections.emptySet(), Collections.emptySet()));
 
         Map<Integer, Integer> topic0LeaderCountByBroker = new HashMap<>();
@@ -185,6 +169,38 @@ public class TopicLeadershipDistributionGoalTest {
                 clusterModel);
 
         assertEquals(ActionAcceptance.REPLICA_REJECT, reject2);
+
+        // REPLICA_REJECT: Swap a follower replica of topic0 with a lead replica of topic3 (any lead replica movement of
+        // topic3 should be invalid)
+
+        Partition partition = clusterModel.getPartitionsByTopic().get(TOPIC0).get(0);
+
+        Broker sourceBroker = partition.followerBrokers().get(0);
+        Broker destinationBroker = clusterModel.aliveBrokers().stream()
+                .filter(b -> !b.equals(sourceBroker))
+                .findAny()
+                .orElseThrow(() -> new RuntimeException("Expected at least one other broker"));
+
+        TopicPartition topic3PartitionToSwapWith = destinationBroker.replicasOfTopicInBroker(TOPIC3).stream()
+                .filter(Replica::isLeader)
+                // We don't want to propose a swap that swaps the lead replica to the same broker a follower replica of
+                // that partition already resides on; that's never a legit move.
+                .filter(replica -> sourceBroker.replicasOfTopicInBroker(TOPIC3).
+                        stream().anyMatch(r -> !replica.topicPartition().equals(r.topicPartition())))
+                .findAny()
+                .orElseThrow(() -> new RuntimeException(""))
+                .topicPartition();
+
+        BalancingAction action = new BalancingAction(
+                partition.topicPartition(),
+                sourceBroker.id(),
+                destinationBroker.id(),
+                ActionType.INTER_BROKER_REPLICA_SWAP,
+                topic3PartitionToSwapWith);
+
+        ActionAcceptance reject3 = goal.actionAcceptance(action, clusterModel);
+
+        assertEquals(ActionAcceptance.REPLICA_REJECT, reject3);
     }
 
     private Goal initializeGoal(Goal goal) {
