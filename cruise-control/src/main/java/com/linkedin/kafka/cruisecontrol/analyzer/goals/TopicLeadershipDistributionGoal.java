@@ -36,9 +36,12 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.MIN_NUM_
  * leader replicas on each non-excluded broker in the cluster is at most +1 for every topic (not every topic partition
  * count is perfectly divisible by every eligible broker count).
  *
- * This goal runs in two phases ({@link RebalancePhase#PER_RACK} and {@link RebalancePhase#PER_BROKER}). This helps to
- * guarantee that a valid solution can be found when operating in conjunction with the {@link RackAwareGoal} or the
- * {@link RackAwareDistributionGoal}.
+ * This goal runs in two phases ({@link RebalancePhase#PER_RACK} and {@link RebalancePhase#PER_BROKER}). The
+ * {@link RebalancePhase#PER_RACK} helps to guarantee that a valid solution can be found when operating in conjunction
+ * with the {@link RackAwareGoal} or the {@link RackAwareDistributionGoal} in situations where brokers are evenly
+ * distributed amongst racks in the cluster. If brokers are not more or less evenly distributed amongst racks in the
+ * cluster, consider setting {@code topic.leadership.distribution.goal.skip.per.rack.phase=true} in
+ * {@code cruisecontrol.properties}.
  *
  * This goal will throw an {@link OptimizationFailureException} if it gets stuck trying to find a solution. However, due
  * to the random nature of how it selects which balancing actions to attempt, it is possible that the goal isn't
@@ -51,8 +54,10 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     private static final Random RANDOM = new Random();
 
     private enum RebalancePhase { PER_RACK, PER_BROKER }
-
     private RebalancePhase _rebalancePhase;
+
+    private static final String SKIP_PER_RACK_PHASE_CONFIG = "topic.leadership.distribution.goal.skip.per.rack.phase";
+    private boolean _shouldSkipPerRackPhase = false;
 
     private Set<String> _allowedTopics;
     private Set<Integer> _allowedBrokerIds;
@@ -82,6 +87,14 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     TopicLeadershipDistributionGoal(BalancingConstraint balancingConstraint) {
         this();
         _balancingConstraint = balancingConstraint;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+
+        String skipPerRackPhaseValue = (String) configs.get(SKIP_PER_RACK_PHASE_CONFIG);
+        _shouldSkipPerRackPhase = skipPerRackPhaseValue != null && skipPerRackPhaseValue.equals("true");
     }
 
     @Override
@@ -237,11 +250,20 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 // There are no previous phases, so we can automatically return true.
                 return true;
             case PER_BROKER:
-                // The only previous phase is the PER_RACK phase, so we check that the topic is still balanced per rack.
-                Broker sourceBroker = clusterModel.broker(action.sourceBrokerId());
-                Broker destinationBroker = clusterModel.broker(action.destinationBrokerId());
+                if (_shouldSkipPerRackPhase) {
+                    // We skipped over the PER_RACK phase; we won't expect the topic to be balanced per rack.
+                    return true;
+                } else {
+                    // The previous phase is the PER_RACK phase, so we check that the topic is still balanced per rack.
+                    Broker sourceBroker = clusterModel.broker(action.sourceBrokerId());
+                    Broker destinationBroker = clusterModel.broker(action.destinationBrokerId());
 
-                return isTopicBalancedPerRack(clusterModel, action.topic(), sourceBroker.rack().id(), destinationBroker.rack().id());
+                    return isTopicBalancedPerRack(
+                            clusterModel,
+                            action.topic(),
+                            sourceBroker.rack().id(),
+                            destinationBroker.rack().id());
+                }
             default:
                 throw new IllegalStateException("Unknown rebalance phase: " + _rebalancePhase);
         }
@@ -250,8 +272,13 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     @Override
     protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
             throws OptimizationFailureException {
-        _rebalancePhase = RebalancePhase.PER_RACK;
-        LOG.info("Entering initial PER_RACK phase");
+        if (_shouldSkipPerRackPhase) {
+            _rebalancePhase = RebalancePhase.PER_BROKER;
+            LOG.info("Skipping initial PER_RACK phase and entering PER_BROKER phase");
+        } else {
+            _rebalancePhase = RebalancePhase.PER_RACK;
+            LOG.info("Entering initial PER_RACK phase");
+        }
 
         _allowedTopics = GoalUtils.topicsToRebalance(clusterModel, optimizationOptions.excludedTopics());
 
