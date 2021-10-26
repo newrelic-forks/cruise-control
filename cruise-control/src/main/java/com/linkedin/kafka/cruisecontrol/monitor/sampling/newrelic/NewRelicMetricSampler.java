@@ -13,6 +13,7 @@ import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricType;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.TopicMetric;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.AbstractMetricSampler;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricSamplerOptions;
+import com.linkedin.kafka.cruisecontrol.monitor.sampling.SamplingUtils;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.NewRelicBrokerQueryBin;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.BrokerTopicCount;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.newrelic.model.KafkaSize;
@@ -543,7 +544,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     private int addTopicMetrics(NewRelicQueryResult queryResult)
             throws InvalidNewRelicResultException {
         int brokerID = queryResult.getBrokerID();
-        String topic = queryResult.getTopic();
+        String topic = SamplingUtils.replaceDotsWithUnderscores(queryResult.getTopic());
         long timeMs = queryResult.getTimeMs();
 
         int metricsAdded = 0;
@@ -568,7 +569,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     private int addPartitionMetrics(NewRelicQueryResult queryResult)
             throws InvalidNewRelicResultException {
         int brokerID = queryResult.getBrokerID();
-        String topic = queryResult.getTopic();
+        String topic = SamplingUtils.replaceDotsWithUnderscores(queryResult.getTopic());
         int partition = queryResult.getPartition();
         long timeMs = queryResult.getTimeMs();
 
