@@ -274,10 +274,10 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             throws OptimizationFailureException {
         if (_shouldSkipPerRackPhase) {
             _rebalancePhase = RebalancePhase.PER_BROKER;
-            LOG.info("Skipping initial PER_RACK phase and entering PER_BROKER phase");
+            LOG.debug("Skipping initial PER_RACK phase and entering PER_BROKER phase");
         } else {
             _rebalancePhase = RebalancePhase.PER_RACK;
-            LOG.info("Entering initial PER_RACK phase");
+            LOG.debug("Entering initial PER_RACK phase");
         }
 
         _allowedTopics = GoalUtils.topicsToRebalance(clusterModel, optimizationOptions.excludedTopics());
@@ -333,8 +333,8 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             _numLeadReplicasByTopicByRackId.put(topic, numLeadReplicasPerRack);
             _numLeadReplicasByTopicByBrokerId.put(topic, numLeadReplicasPerBroker);
 
-            LOG.debug("Targeting {}(+1) lead replicas per rack for topic {}", targetNumLeadReplicasPerRack, topic);
-            LOG.debug("Targeting {}(+1) lead replicas per broker for topic {}", targetNumLeadReplicasPerBroker, topic);
+            LOG.trace("Targeting {}(+1) lead replicas per rack for topic {}", targetNumLeadReplicasPerRack, topic);
+            LOG.trace("Targeting {}(+1) lead replicas per broker for topic {}", targetNumLeadReplicasPerBroker, topic);
         }
 
         _previousTotalDelta = Integer.MAX_VALUE;
@@ -364,7 +364,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 }
 
                 if (isBalancedPerRack) {
-                    LOG.info("Transitioning from PER_RACK phase to PER_BROKER phase");
+                    LOG.debug("Transitioning from PER_RACK phase to PER_BROKER phase");
                     _rebalancePhase = RebalancePhase.PER_BROKER;
                     _previousTotalDelta = Integer.MAX_VALUE;
                 }
@@ -380,7 +380,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
                 if (isBalancedPerBroker) {
                     finish();
-                    LOG.info("Finished.");
+                    LOG.debug("Finished.");
                 }
                 break;
             default:
@@ -461,7 +461,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
             switch (_rebalancePhase) {
                 case PER_RACK:
-                    LOG.trace("Re-balancing for broker {} in rack {} and topic {}", broker.id(), broker.rack().id(), topic);
+                    LOG.debug("Re-balancing for broker {} in rack {} and topic {}", broker.id(), broker.rack().id(), topic);
 
                     if (!isTopicBalancedPerRack(clusterModel, topic)) {
                         int numLeadReplicasInRack = _numLeadReplicasByTopicByRackId
@@ -482,7 +482,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                     }
                     break;
                 case PER_BROKER:
-                    LOG.trace("Re-balancing for broker {} and topic {}", broker.id(), topic);
+                    LOG.debug("Re-balancing for broker {} and topic {}", broker.id(), topic);
 
                     if (!isTopicBalancedPerBroker(topic)) {
                         int numLeadReplicasToMove = leaderReplicas.size() - _targetNumLeadReplicasPerBrokerByTopic.get(topic);
@@ -787,7 +787,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
         if (destinationBroker != null) {
             updateLeadReplicaCounts(leaderReplica, sourceBroker, destinationBroker);
-            LOG.info("Lead replica of {} ({}) moved from {} to {} via {}",
+            LOG.trace("Lead replica of {} ({}) moved from {} to {} via {}",
                     leaderReplica.topicPartition().toString(),
                     getReplicaSetString(clusterModel, leaderReplica),
                     sourceBroker.id(),
@@ -824,7 +824,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
         if (destinationBroker != null) {
             updateLeadReplicaCounts(replica, sourceBroker, destinationBroker);
-            LOG.info("Lead replica of {} ({}) moved from {} to {} via {}",
+            LOG.trace("Lead replica of {} ({}) moved from {} to {} via {}",
                     replica.topicPartition().toString(),
                     getReplicaSetString(clusterModel, replica),
                     sourceBroker.id(),
