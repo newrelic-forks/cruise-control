@@ -128,6 +128,11 @@ public abstract class AbstractRackAwareGoal extends AbstractGoal {
       if (broker.isAlive() && !broker.currentOfflineReplicas().contains(replica) && shouldKeepInTheCurrentBroker(replica, clusterModel)) {
         continue;
       }
+      if (replica.isLeader()) {
+        // This goal should be able to be accomplished by moving only followers around; also seeking to move only
+        // followers around should make the RackAwareGoal play more nicely with the TopicLeadershipDistributionGoal.
+        continue;
+      }
       // The relevant rack awareness condition is violated. Move replica to an eligible broker
       SortedSet<Broker> eligibleBrokers = rackAwareEligibleBrokers(replica, clusterModel);
       if (maybeApplyBalancingAction(clusterModel, replica, eligibleBrokers,
@@ -151,7 +156,7 @@ public abstract class AbstractRackAwareGoal extends AbstractGoal {
    *
    * @param replica An alive replica to check whether it should stay in the current broker.
    * @param clusterModel The state of the cluster.
-   * @return {@code true} if the given alive replica should stay in the current broker, {@code false} otherwise.
+   * @return True if the given alive replica should stay in the current broker, false otherwise.
    */
   protected abstract boolean shouldKeepInTheCurrentBroker(Replica replica, ClusterModel clusterModel);
 
