@@ -383,8 +383,10 @@ public class GoalOptimizer implements Runnable {
 
     Set<String> excludedTopics = excludedTopics(clusterModel, null);
     LOG.debug("Topics excluded from partition movement: {}", excludedTopics);
+    LOG.info("[ASDF] Getting optimization options...");
     OptimizationOptions optimizationOptions =
         _optimizationOptionsGenerator.optimizationOptionsForCachedProposalCalculation(clusterModel, excludedTopics);
+    LOG.info("[ASDF] Got optimization options.");
     return optimizations(clusterModel, goalsByPriority, operationProgress, null, optimizationOptions);
   }
 
@@ -445,6 +447,7 @@ public class GoalOptimizer implements Runnable {
       preOptimizedLeaderDistribution = preOptimizedLeaderDistribution == null ? initLeaderDistribution : clusterModel.getLeaderDistribution();
       OptimizationForGoal step = new OptimizationForGoal(goal.name());
       operationProgress.addStep(step);
+      LOG.info("[ASDF] Optimizing goal {}...", goal.name());
       LOG.debug("Optimizing goal {}", goal.name());
       long startTimeMs = _time.milliseconds();
       boolean succeeded = goal.optimize(clusterModel, optimizedGoals, optimizationOptions);
@@ -565,16 +568,28 @@ public class GoalOptimizer implements Runnable {
       OperationProgress operationProgress =
           _progressUpdateLock.compareAndSet(false, true) ? _proposalPrecomputingProgress : new OperationProgress();
 
+      LOG.info("[ASDF] Acquiring cluster model lock...");
       try (AutoCloseable ignored = _loadMonitor.acquireForModelGeneration(operationProgress)) {
+        LOG.info("[ASDF] Cluster model lock acquired.");
+        LOG.info("[ASDF] Noting start time...");
         long startMs = _time.milliseconds();
+        LOG.info("[ASDF] Start time noted.");
         // We compute the proposal even if there is not enough modeled partitions.
+        LOG.info("[ASDF] Gathering requirements...");
         ModelCompletenessRequirements requirements = _loadMonitor.meetCompletenessRequirements(_defaultModelCompletenessRequirements)
                                                      ? _defaultModelCompletenessRequirements : _requirementsWithAvailableValidWindows;
+        LOG.info("[ASDF] Done gathering requirements.");
+        LOG.info("[ASDF] Building cluster model...");
         ClusterModel clusterModel = _loadMonitor.clusterModel(_time.milliseconds(), requirements, _allowCapacityEstimation, operationProgress);
+        LOG.info("[ASDF] Done building cluster model.");
         if (!clusterModel.topics().isEmpty()) {
+          LOG.info("[ASDF] Running optimizations...");
           OptimizerResult result = optimizations(clusterModel, _goalsByPriority, operationProgress);
+          LOG.info("[ASDF] Done running optimizations.");
           LOG.debug("Generated a proposal candidate in {} ms.", _time.milliseconds() - startMs);
+          LOG.info("[ASDF] Updating cached proposals...");
           updateCachedProposals(result);
+          LOG.info("[ASDF] Done updating cached proposals.");
         } else {
           LOG.warn("The cluster model does not have valid topics, skipping proposal precomputation.");
         }
