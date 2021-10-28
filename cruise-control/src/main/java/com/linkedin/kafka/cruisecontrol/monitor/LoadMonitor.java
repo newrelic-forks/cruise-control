@@ -394,6 +394,10 @@ public class LoadMonitor {
     _clusterModelSemaphore.acquire();
     _acquiredClusterModelSemaphore.set(true);
     step.done();
+    LOG.info("CLUSTER MODEL LOCK ACQUIRED");
+    for (StackTraceElement element : Thread.currentThread().getStackTrace()) {
+      LOG.info(element.toString());
+    }
     return new AutoCloseableSemaphore();
   }
 
