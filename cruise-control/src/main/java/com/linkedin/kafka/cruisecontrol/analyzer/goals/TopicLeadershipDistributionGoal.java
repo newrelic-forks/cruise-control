@@ -286,6 +286,10 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             LOG.warn("All topics are excluded from {}.", name());
         }
 
+        if (!clusterModel.brokenBrokers().isEmpty()) {
+            logAndThrowOptimizationFailureException("Failed brokers detected; exiting early.");
+        }
+
         Set<Integer> excludedBrokers = optimizationOptions.excludedBrokersForLeadership();
         _allowedBrokerIds = clusterModel.aliveBrokers().stream()
                 .map(Broker::id)
