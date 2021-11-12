@@ -12,6 +12,7 @@ import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.cruisecontrol.detector.metricanomaly.MetricAnomalyType;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionStatus;
+import com.linkedin.kafka.cruisecontrol.common.Slack;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.common.KafkaCruiseControlThreadFactory;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnomalyDetectorConfig;
@@ -81,7 +82,9 @@ public class AnomalyDetectorManager {
   private final Object _shutdownLock;
   private final Map<AnomalyType, Timer> _selfHealingFixGenerationTimer;
 
-  public AnomalyDetectorManager(KafkaCruiseControl kafkaCruiseControl, Time time, MetricRegistry dropwizardMetricRegistry) {
+  private final Slack _slack;
+
+  public AnomalyDetectorManager(KafkaCruiseControl kafkaCruiseControl, Time time, MetricRegistry dropwizardMetricRegistry, Slack slack) {
     // For anomalies of different types, prioritize handling anomaly of higher priority;
     // otherwise, handle anomaly in order of detected time.
     _anomalies = new PriorityBlockingQueue<>(ANOMALY_QUEUE_INITIAL_CAPACITY, anomalyComparator());
@@ -126,6 +129,8 @@ public class AnomalyDetectorManager {
     _selfHealingFixGenerationTimer = new HashMap<>();
     registerGaugeSensors(dropwizardMetricRegistry);
     _anomalyDetectorState = new AnomalyDetectorState(time, _anomalyNotifier, numCachedRecentAnomalyStates, dropwizardMetricRegistry);
+
+    _slack = slack;
   }
 
   /**
@@ -141,7 +146,8 @@ public class AnomalyDetectorManager {
                          DiskFailureDetector diskFailureDetector,
                          TopicAnomalyDetector topicAnomalyDetector,
                          MaintenanceEventDetector maintenanceEventDetector,
-                         ScheduledExecutorService detectorScheduler) {
+                         ScheduledExecutorService detectorScheduler,
+                         Slack slack) {
     _anomalies = anomalies;
     _anomalyDetectionIntervalMsByType = new HashMap<>();
     KafkaAnomalyType.cachedValues().stream().filter(type -> type != BROKER_FAILURE)
@@ -167,6 +173,8 @@ public class AnomalyDetectorManager {
     cachedValues().forEach(anomalyType -> _selfHealingFixGenerationTimer.put(anomalyType, new Timer()));
     // Add anomaly detector state
     _anomalyDetectorState = new AnomalyDetectorState(new SystemTime(), _anomalyNotifier, 10, null);
+
+    _slack = slack;
   }
 
   /**
@@ -545,6 +553,7 @@ public class AnomalyDetectorManager {
                 ctx.stop();
               }
               LOG.info("{} the anomaly {}.", fixStarted ? "Fixing" : "Cannot fix", _anomalyInProgress);
+              _slack.post(String.format("[SELF-HEALING] %s the anomaly %s.", fixStarted ? "Fixing" : "Cannot fix", _anomalyInProgress));
               String optimizationResult = fixStarted ? _anomalyInProgress.optimizationResult(false) : null;
               _anomalyLoggerExecutor.submit(() -> logSelfHealingOperation(anomalyId, null, optimizationResult));
             }

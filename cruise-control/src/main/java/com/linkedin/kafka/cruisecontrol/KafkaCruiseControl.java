@@ -14,6 +14,7 @@ import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.analyzer.GoalOptimizer;
 import com.linkedin.kafka.cruisecontrol.common.KafkaCruiseControlThreadFactory;
 import com.linkedin.kafka.cruisecontrol.common.MetadataClient;
+import com.linkedin.kafka.cruisecontrol.common.Slack;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.TopicConfigProvider;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnomalyDetectorConfig;
@@ -85,6 +86,7 @@ public class KafkaCruiseControl {
   private final Time _time;
   private final AdminClient _adminClient;
   private final Provisioner _provisioner;
+  private final Slack _slack;
 
   private static final String VERSION;
   private static final String COMMIT_ID;
@@ -119,11 +121,12 @@ public class KafkaCruiseControl {
     _provisioner = config.getConfiguredInstance(AnomalyDetectorConfig.PROVISIONER_CLASS_CONFIG,
                                                 Provisioner.class,
                                                 Collections.singletonMap(KAFKA_CRUISE_CONTROL_OBJECT_CONFIG, this));
-    _anomalyDetectorManager = new AnomalyDetectorManager(this, _time, dropwizardMetricRegistry);
-    _executor = new Executor(config, _time, dropwizardMetricRegistry, _anomalyDetectorManager);
+    _slack = new Slack(config);
+    _anomalyDetectorManager = new AnomalyDetectorManager(this, _time, dropwizardMetricRegistry, _slack);
+    _executor = new Executor(config, _time, dropwizardMetricRegistry, _anomalyDetectorManager, _slack);
     _loadMonitor = new LoadMonitor(config, _time, dropwizardMetricRegistry, KafkaMetricDef.commonMetricDef());
     _goalOptimizerExecutor = Executors.newSingleThreadExecutor(new KafkaCruiseControlThreadFactory("GoalOptimizerExecutor"));
-    _goalOptimizer = new GoalOptimizer(config, _loadMonitor, _time, dropwizardMetricRegistry, _executor, _adminClient);
+    _goalOptimizer = new GoalOptimizer(config, _loadMonitor, _time, dropwizardMetricRegistry, _executor, _adminClient, _slack);
   }
 
   /**
@@ -146,6 +149,7 @@ public class KafkaCruiseControl {
     _goalOptimizerExecutor = goalOptimizerExecutor;
     _goalOptimizer = goalOptimizer;
     _provisioner = provisioner;
+    _slack = null;
   }
 
   /**

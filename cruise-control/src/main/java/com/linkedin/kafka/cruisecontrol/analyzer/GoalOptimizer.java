@@ -6,6 +6,7 @@ package com.linkedin.kafka.cruisecontrol.analyzer;
 
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
+import com.linkedin.kafka.cruisecontrol.common.Slack;
 import com.linkedin.kafka.cruisecontrol.common.Utils;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -87,6 +88,7 @@ public class GoalOptimizer implements Runnable {
   private final double _priorityWeight;
   private final double _strictnessWeight;
   private final OptimizationOptionsGenerator _optimizationOptionsGenerator;
+  private final Slack _slack;
 
   /**
    * Constructor for Goal Optimizer takes the goals as input. The order of the list determines the priority of goals
@@ -99,7 +101,8 @@ public class GoalOptimizer implements Runnable {
                        Time time,
                        MetricRegistry dropwizardMetricRegistry,
                        Executor executor,
-                       AdminClient adminClient) {
+                       AdminClient adminClient,
+                       Slack slack) {
     _goalsByPriority = AnalyzerUtils.getGoalsByPriority(config);
     _defaultModelCompletenessRequirements = MonitorUtils.combineLoadRequirementOptions(_goalsByPriority);
     _requirementsWithAvailableValidWindows = new ModelCompletenessRequirements(
@@ -132,6 +135,7 @@ public class GoalOptimizer implements Runnable {
     _optimizationOptionsGenerator = config.getConfiguredInstance(AnalyzerConfig.OPTIMIZATION_OPTIONS_GENERATOR_CLASS_CONFIG,
                                                                  OptimizationOptionsGenerator.class,
                                                                  overrideConfigs);
+    _slack = slack;
   }
 
   @Override
@@ -446,11 +450,14 @@ public class GoalOptimizer implements Runnable {
       OptimizationForGoal step = new OptimizationForGoal(goal.name());
       operationProgress.addStep(step);
       LOG.debug("Optimizing goal {}", goal.name());
+      _slack.post(String.format("[GOAL-OPTIMIZER] Optimizing %s", goal.name()));
       long startTimeMs = _time.milliseconds();
       boolean succeeded = goal.optimize(clusterModel, optimizedGoals, optimizationOptions);
       optimizedGoals.add(goal);
       statsByGoalPriority.put(goal, clusterModel.getClusterStats(_balancingConstraint, optimizationOptions));
-      optimizationDurationByGoal.put(goal.name(), Duration.ofMillis(_time.milliseconds() - startTimeMs));
+      long duration = _time.milliseconds() - startTimeMs;
+      optimizationDurationByGoal.put(goal.name(), Duration.ofMillis(duration));
+      _slack.post(String.format("[GOAL-OPTIMIZER] Finished optimizing %s in %s ms", goal.name(), duration));
 
       Set<ExecutionProposal> goalProposals = AnalyzerUtils.getDiff(preOptimizedReplicaDistribution,
                                                                    preOptimizedLeaderDistribution,
