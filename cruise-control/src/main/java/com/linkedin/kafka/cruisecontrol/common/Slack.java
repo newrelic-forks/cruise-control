@@ -31,22 +31,27 @@ public class Slack {
     private static final String CONFIG_KEY_WEBHOOK_URL = "slack.webhook.url";
     private static final String CONFIG_KEY_CONNECT_TIMEOUT_MS = "slack.connect.timeout.ms";
     private static final String CONFIG_KEY_READ_TIMEOUT_MS = "slack.read.timeout.ms";
+    private static final String CONFIG_KEY_NR_CELL_NAME = "newrelic.cell.name";
 
     private final String _webhookUrl;
     private final int _connectTimeoutMs;
     private final int _readTimeoutMs;
+    private final String _nrCellName;
 
     public Slack(KafkaCruiseControlConfig config) {
         _webhookUrl = config.getString(CONFIG_KEY_WEBHOOK_URL);
         _connectTimeoutMs = config.getInt(CONFIG_KEY_CONNECT_TIMEOUT_MS);
         _readTimeoutMs = config.getInt(CONFIG_KEY_READ_TIMEOUT_MS);
+        _nrCellName = config.getString(CONFIG_KEY_NR_CELL_NAME);
     }
 
-    public void post(String message) {
+    public void post(String sourceIdentifier, String message) {
         if (_webhookUrl == null || _webhookUrl.isEmpty()) {
             LOG.warn("No Slack webhook configured; will skip posting to Slack: " + message);
             return;
         }
+
+        message += String.format("[%s] [%s] ", _nrCellName, sourceIdentifier);
 
         Map<String, String> requestParameters = Map.of(
                 REQ_BODY_KEY_TEXT, message,

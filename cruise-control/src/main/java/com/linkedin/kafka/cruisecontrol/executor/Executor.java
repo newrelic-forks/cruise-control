@@ -1221,7 +1221,7 @@ public class Executor {
         notifyFinishedTask(userTaskInfo);
         // Clear completed execution.
         clearCompletedExecution();
-        _slack.post("[EXECUTOR] Finished executing reassignments");
+        _slack.post("EXECUTOR", "Finished executing reassignments");
       }
     }
 
@@ -1338,7 +1338,7 @@ public class Executor {
       LOG.info("Starting {} inter-broker partition movements.", numTotalPartitionMovements);
 
       int partitionsToMove = numTotalPartitionMovements;
-      _slack.post(String.format("[EXECUTOR] Executing %s inter-broker replica movements", numTotalPartitionMovements));
+      _slack.post("EXECUTOR", String.format("Executing %s inter-broker replica movements", numTotalPartitionMovements));
       // Exhaust all the pending partition movements.
       while ((partitionsToMove > 0 || !inExecutionTasks().isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
         // Get tasks to execute.
@@ -1452,7 +1452,7 @@ public class Executor {
     private void moveLeaderships() {
       int numTotalLeadershipMovements = _executionTaskManager.numRemainingLeadershipMovements();
       LOG.info("Starting {} leadership movements.", numTotalLeadershipMovements);
-      _slack.post(String.format("[EXECUTOR] Executing %s leadership movements", numTotalLeadershipMovements));
+      _slack.post("EXECUTOR", String.format("Executing %s leadership movements", numTotalLeadershipMovements));
       int numFinishedLeadershipMovements = 0;
       while (_executionTaskManager.numRemainingLeadershipMovements() != 0 && _stopSignal.get() == NO_STOP_EXECUTION) {
         updateOngoingExecutionState();

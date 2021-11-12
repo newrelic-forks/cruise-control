@@ -553,7 +553,7 @@ public class AnomalyDetectorManager {
                 ctx.stop();
               }
               LOG.info("{} the anomaly {}.", fixStarted ? "Fixing" : "Cannot fix", _anomalyInProgress);
-              _slack.post(String.format("[SELF-HEALING] %s the anomaly %s.", fixStarted ? "Fixing" : "Cannot fix", _anomalyInProgress));
+              _slack.post("SELF-HEALING", String.format("%s the anomaly %s.", fixStarted ? "Fixing" : "Cannot fix", _anomalyInProgress));
               String optimizationResult = fixStarted ? _anomalyInProgress.optimizationResult(false) : null;
               _anomalyLoggerExecutor.submit(() -> logSelfHealingOperation(anomalyId, null, optimizationResult));
             }

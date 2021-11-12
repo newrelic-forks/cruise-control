@@ -450,14 +450,14 @@ public class GoalOptimizer implements Runnable {
       OptimizationForGoal step = new OptimizationForGoal(goal.name());
       operationProgress.addStep(step);
       LOG.debug("Optimizing goal {}", goal.name());
-      _slack.post(String.format("[GOAL-OPTIMIZER] Optimizing %s", goal.name()));
+      _slack.post("GOAL-OPTIMIZER", String.format("Optimizing %s", goal.name()));
       long startTimeMs = _time.milliseconds();
       boolean succeeded = goal.optimize(clusterModel, optimizedGoals, optimizationOptions);
       optimizedGoals.add(goal);
       statsByGoalPriority.put(goal, clusterModel.getClusterStats(_balancingConstraint, optimizationOptions));
       long duration = _time.milliseconds() - startTimeMs;
       optimizationDurationByGoal.put(goal.name(), Duration.ofMillis(duration));
-      _slack.post(String.format("[GOAL-OPTIMIZER] Finished optimizing %s in %s ms", goal.name(), duration));
+      _slack.post("GOAL-OPTIMIZER", String.format("Finished optimizing %s in %s ms", goal.name(), duration));
 
       Set<ExecutionProposal> goalProposals = AnalyzerUtils.getDiff(preOptimizedReplicaDistribution,
                                                                    preOptimizedLeaderDistribution,
