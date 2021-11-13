@@ -35,7 +35,7 @@ public class Slack {
             return;
         }
 
-        message += String.format("[%s] [%s] ", _nrCellName, sourceIdentifier);
+        message = String.format("[%s] [%s] %s", _nrCellName, sourceIdentifier, message);
 
         try {
             SlackMessage slackMessage = new SlackMessage(USERNAME, message, EMOJI, SLACK_CHANNEL);
