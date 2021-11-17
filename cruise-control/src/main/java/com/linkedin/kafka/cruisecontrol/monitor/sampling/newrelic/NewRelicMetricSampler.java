@@ -74,11 +74,11 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
 
     // NRQL Query limit
     // As a note, we will only attempt to run queries of size (MAX_SIZE - 1) or less
-    private static int MAX_SIZE;
+    private static int maxSize;
 
     // Currently we are hardcoding this in -> later need to make it specific to whatever cluster
     // this cruise control instance is running on
-    private static String CLUSTER_NAME = "";
+    private static String clusterName = "";
 
     // Supplies all the queries we plan to run to fetch metrics from NRDB
     private NewRelicQuerySupplier _querySupplier;
@@ -101,14 +101,14 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             throw new ConfigException(String.format(
                     "%s config is required to have a query limit", NEWRELIC_QUERY_LIMIT_CONFIG));
         }
-        MAX_SIZE = Integer.parseInt((String) configs.get(NEWRELIC_QUERY_LIMIT_CONFIG));
-        NewRelicQueryBin.setMaxSize(MAX_SIZE);
+        maxSize = Integer.parseInt((String) configs.get(NEWRELIC_QUERY_LIMIT_CONFIG));
+        NewRelicQueryBin.setMaxSize(maxSize);
 
         if (!configs.containsKey(CLUSTER_NAME_CONFIG)) {
             throw new ConfigException(String.format(
                     "%s config is required to have the cluster name", CLUSTER_NAME_CONFIG));
         }
-        CLUSTER_NAME = (String) configs.get(CLUSTER_NAME_CONFIG);
+        clusterName = (String) configs.get(CLUSTER_NAME_CONFIG);
 
         // Get the new query supplier if it was passed in the config
         String newRelicQuerySupplierClassName = (String) configs.get(NEWRELIC_QUERY_SUPPLIER_CONFIG);
@@ -205,7 +205,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
      */
     private void runBrokerQueries(ResultCounts counts) throws Exception {
         // Run our broker query first
-        final String brokerQuery = _querySupplier.brokerQuery(CLUSTER_NAME);
+        final String brokerQuery = _querySupplier.brokerQuery(clusterName);
         final List<NewRelicQueryResult> brokerResults = _newRelicAdapter.runQuery(brokerQuery);
 
         for (NewRelicQueryResult result : brokerResults) {
@@ -244,7 +244,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             LOGGER.trace("Query: {} -- Internal topic query size: {} -- Query output size: {}",
                     query, brokerQueryBins.get(i).getSize(), queryResults.size());
 
-            if (queryResults.size() >= MAX_SIZE) {
+            if (queryResults.size() >= maxSize) {
                 throw new IllegalStateException(String.format("Topic query: %s output was larger: %s than the maximum "
                         + "accepted query size. Our expected size: %s",
                         query, queryResults.size(), brokerQueryBins.get(i).getSize()));
@@ -287,7 +287,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             LOGGER.trace("Query: {} -- Internal partition query size: {} -- Query output size: {}",
                     query, topicQueryBins.get(i).getSize(), queryResults.size());
 
-            if (queryResults.size() >= MAX_SIZE) {
+            if (queryResults.size() >= maxSize) {
                 throw new IllegalStateException(String.format("Partition query: %s output was larger: %s than the maximum "
                                 + "accepted query size. Our expected size: %s",
                         query, queryResults.size(), topicQueryBins.get(i).getSize()));
@@ -397,7 +397,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
             // If topic has more than 2000 replicas, go through each broker and get
             // the count of replicas in that broker for this topic and create
             // a new topicSize for each broker, topic combination
-            if (size >= MAX_SIZE) {
+            if (size >= maxSize) {
                 HashMap<Integer, Integer> brokerToCount = new HashMap<>();
                 for (Node node: cluster.nodes()) {
                     brokerToCount.put(node.id(), 0);
@@ -482,10 +482,10 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
         // When every broker is in one bin, we don't need to include the "WHERE broker IN"
         // and can just select every broker
         if (queryBins.size() == 1) {
-            queries.add(_querySupplier.topicQuery("", CLUSTER_NAME));
+            queries.add(_querySupplier.topicQuery("", clusterName));
         } else {
             for (NewRelicQueryBin queryBin : queryBins) {
-                queries.add(_querySupplier.topicQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
+                queries.add(_querySupplier.topicQuery(queryBin.generateStringForQuery(), clusterName));
             }
         }
         return queries;
@@ -502,7 +502,7 @@ public class NewRelicMetricSampler extends AbstractMetricSampler {
     private List<String> getPartitionQueries(List<NewRelicQueryBin> queryBins) {
         List<String> queries = new ArrayList<>();
         for (NewRelicQueryBin queryBin: queryBins) {
-            queries.add(_querySupplier.partitionQuery(queryBin.generateStringForQuery(), CLUSTER_NAME));
+            queries.add(_querySupplier.partitionQuery(queryBin.generateStringForQuery(), clusterName));
         }
         return queries;
     }

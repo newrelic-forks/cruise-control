@@ -50,11 +50,7 @@ public class NewRelicQueryResult {
 
     private final Map<RawMetricType, Double> _results = new HashMap<>();
 
-    private static NewRelicQuerySupplier _querySupplier;
-
-    public static void setupQuerySupplier(NewRelicQuerySupplier querySupplier) {
-        _querySupplier = querySupplier;
-    }
+    private static NewRelicQuerySupplier querySupplier;
 
     /**
      * Takes a JSON result which represents one of the results from a NRQL query,
@@ -77,13 +73,13 @@ public class NewRelicQueryResult {
             _topic = facets.get(1).asText();
             if (facets.has(2)) {
                 _partition = facets.get(2).asInt();
-                valueToMetricMap = _querySupplier.getUnmodifiablePartitionMap();
+                valueToMetricMap = querySupplier.getUnmodifiablePartitionMap();
             } else {
                 _partition = -1;
-                valueToMetricMap = _querySupplier.getUnmodifiableTopicMap();
+                valueToMetricMap = querySupplier.getUnmodifiableTopicMap();
             }
         } else {
-            valueToMetricMap = _querySupplier.getUnmodifiableBrokerMap();
+            valueToMetricMap = querySupplier.getUnmodifiableBrokerMap();
             _brokerID = facets.asInt();
             _topic = null;
             _partition = -1;
@@ -150,5 +146,9 @@ public class NewRelicQueryResult {
     @Override
     public String toString() {
         return "NewRelic Query Result: " + _results.toString();
+    }
+
+    public static void setupQuerySupplier(NewRelicQuerySupplier querySupplier) {
+        NewRelicQueryResult.querySupplier = querySupplier;
     }
 }
