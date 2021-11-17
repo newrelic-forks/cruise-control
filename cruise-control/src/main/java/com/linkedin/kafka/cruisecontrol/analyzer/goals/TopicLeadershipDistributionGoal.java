@@ -94,7 +94,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         super.configure(configs);
 
         String skipPerRackPhaseValue = (String) configs.get(SKIP_PER_RACK_PHASE_CONFIG);
-        _shouldSkipPerRackPhase = skipPerRackPhaseValue != null && skipPerRackPhaseValue.equals("true");
+        _shouldSkipPerRackPhase = "true".equals(skipPerRackPhaseValue);
     }
 
     @Override
