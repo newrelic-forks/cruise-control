@@ -102,7 +102,7 @@ class NewRelicAdapter {
             if (responseCode != HttpServletResponse.SC_OK) {
                 throw new IOException(String.format("Received non-success response code on New Relic GraphQL API HTTP call "
                         + "(response code = %s, response body = %s)", responseCode, responseBody));
-            } else if (responseBody == null || responseBody.equals("")) {
+            } else if (responseBody == null || "".equals(responseBody)) {
                 throw new IOException(String.format("Received null responseBody or responseBody was empty."
                         + " (response code = %s, response body = %s)", responseCode, responseBody));
             }

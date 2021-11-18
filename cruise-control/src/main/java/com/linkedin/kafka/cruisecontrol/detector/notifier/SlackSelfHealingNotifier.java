@@ -62,15 +62,16 @@ public class SlackSelfHealingNotifier extends SelfHealingNotifier {
             return;
         }
 
-        String text = String.format("%s detected %s. Self healing %s.%s", anomalyType, anomaly,
-                _selfHealingEnabled.get(anomalyType) ? String.format("start time %s", utcDateFor(selfHealingStartTime))
-                        : "is disabled",
-                autoFixTriggered ? "%nSelf-healing has been triggered." : "");
+        if (_selfHealingEnabled.get(anomalyType)) {
+            String text = String.format("%s detected %s. Self healing started at %s%s",
+                    anomalyType, anomaly, utcDateFor(selfHealingStartTime),
+                    autoFixTriggered ? " (an automatic fix has been triggered)" : "");
 
-        try {
-            sendSlackMessage(new SlackMessage(_slackUser, text, _slackIcon, _slackChannel), _slackWebhook);
-        } catch (IOException e) {
-            LOG.warn("ERROR sending alert to Slack", e);
+            try {
+                sendSlackMessage(new SlackMessage(_slackUser, text, _slackIcon, _slackChannel), _slackWebhook);
+            } catch (IOException e) {
+                LOG.warn("ERROR sending alert to Slack", e);
+            }
         }
     }
 

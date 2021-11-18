@@ -13,16 +13,16 @@ import java.util.List;
  */
 public abstract class NewRelicQueryBin {
     private int _currentSize;
-    private List<KafkaSize> _kafkaSizes;
-    private static int MAX_SIZE;
-
-    public static void setMaxSize(int maxSize) {
-        MAX_SIZE = maxSize;
-    }
+    private final List<KafkaSize> _kafkaSizes;
+    private static int maxSize;
 
     public NewRelicQueryBin() {
         _kafkaSizes = new ArrayList<>();
         _currentSize = 0;
+    }
+
+    public static void setMaxSize(int maxSize) {
+        NewRelicQueryBin.maxSize = maxSize;
     }
 
     /**
@@ -34,7 +34,7 @@ public abstract class NewRelicQueryBin {
      */
     public boolean addKafkaSize(KafkaSize newKafkaSize) {
         int newSize = newKafkaSize.getSize();
-        if (_currentSize + newSize >= MAX_SIZE) {
+        if (_currentSize + newSize >= maxSize) {
             return false;
         } else {
             _currentSize += newSize;

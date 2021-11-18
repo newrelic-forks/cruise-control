@@ -19,6 +19,7 @@ import com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorManager;
 import com.linkedin.kafka.cruisecontrol.exception.OngoingExecutionException;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaClientsIntegrationTestHarness;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
+import com.linkedin.kafka.cruisecontrol.monitor.CoastGuard;
 import com.linkedin.kafka.cruisecontrol.monitor.LoadMonitor;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.NoopSampler;
 import com.linkedin.kafka.cruisecontrol.monitor.task.LoadMonitorTaskRunner;
@@ -388,9 +389,10 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   public void testExecutionKnobs() {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
     assertThrows(IllegalStateException.class,
-                 () -> new Executor(config, null, new MetricRegistry(), EasyMock.mock(MetadataClient.class), null, null));
+                 () -> new Executor(config, null, new MetricRegistry(), EasyMock.mock(MetadataClient.class), null, null,
+                         EasyMock.mock(CoastGuard.class)));
     Executor executor = new Executor(config, null, new MetricRegistry(), EasyMock.mock(MetadataClient.class),
-                                     null, EasyMock.mock(AnomalyDetectorManager.class));
+                                     null, EasyMock.mock(AnomalyDetectorManager.class), EasyMock.mock(CoastGuard.class));
 
     // Verify correctness of set/get requested execution progress check interval.
     long defaultExecutionProgressCheckIntervalMs = config.getLong(ExecutorConfig.EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG);
@@ -444,7 +446,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
 
     Collection<ExecutionProposal> proposalsToExecute = Collections.singletonList(proposal);
     Executor executor = new Executor(configs, time, new MetricRegistry(), mockMetadataClient, null,
-                                     mockAnomalyDetectorManager);
+                                     mockAnomalyDetectorManager, EasyMock.mock(CoastGuard.class));
     executor.setUserTaskManager(mockUserTaskManager);
 
     executor.setGeneratingProposalsForExecution(RANDOM_UUID, ExecutorTest.class::getSimpleName, true);
@@ -730,7 +732,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
       EasyMock.replay(mockUserTaskInfo, mockExecutorNotifier, mockLoadMonitor, mockAnomalyDetectorManager);
     }
     Executor executor = new Executor(configs, new SystemTime(), new MetricRegistry(), null, mockExecutorNotifier,
-                                     mockAnomalyDetectorManager);
+                                     mockAnomalyDetectorManager, EasyMock.mock(CoastGuard.class));
     executor.setUserTaskManager(mockUserTaskManager);
     Map<TopicPartition, Integer> replicationFactors = new HashMap<>();
     for (ExecutionProposal proposal : proposalsToCheck) {
