@@ -2,7 +2,7 @@
  * Copyright 2020 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
  */
 
-package com.linkedin.kafka.cruisecontrol.executor;
+package com.linkedin.kafka.cruisecontrol.monitor;
 
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -22,10 +22,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
-import static com.linkedin.kafka.cruisecontrol.executor.CoastGuard.COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.executor.CoastGuard.COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.executor.CoastGuard.COAST_CLEAR_MIN_DURATION_MS_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.executor.CoastGuard.IS_ENABLED_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.monitor.CoastGuard.COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.monitor.CoastGuard.COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.monitor.CoastGuard.COAST_CLEAR_MIN_DURATION_MS_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.monitor.CoastGuard.IS_ENABLED_CONFIG;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.mock;
 import static org.easymock.EasyMock.replay;
