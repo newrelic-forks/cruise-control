@@ -35,6 +35,13 @@ public class CoastGuard {
     static final String COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG = "coast.guard.coast.clear.max.wait.duration.ms";
     static final String COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG = "coast.guard.coast.clear.check.wait.duration.ms";
 
+    // 1 minute
+    private static final String COAST_CLEAR_MIN_DURATION_MS_DEFAULT = "60000";
+    // 1 hour
+    private static final String COAST_CLEAR_MAX_WAIT_DURATION_MS_DEFAULT = "3600000";
+    // 1 second
+    private static final String COAST_CLEAR_CHECK_WAIT_DURATION_MS_DEFAULT = "1000";
+
     private final AdminClient _adminClient;
     private final Time _time;
     private final ExecutorService _waitExecutor;
@@ -51,9 +58,12 @@ public class CoastGuard {
 
         Map<String, Object> mergedConfig = config.mergedConfigValues();
         _isEnabled = "true".equals(mergedConfig.get(IS_ENABLED_CONFIG));
-        _coastClearMinDurationMs = Long.parseLong((String) mergedConfig.get(COAST_CLEAR_MIN_DURATION_MS_CONFIG));
-        _coastClearMaxWaitDurationMs = Long.parseLong((String) mergedConfig.get(COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG));
-        _coastClearCheckWaitDurationMs = Long.parseLong((String) mergedConfig.get(COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG));
+        _coastClearMinDurationMs = Long.parseLong((String) mergedConfig.getOrDefault(
+                COAST_CLEAR_MIN_DURATION_MS_CONFIG, COAST_CLEAR_MIN_DURATION_MS_DEFAULT));
+        _coastClearMaxWaitDurationMs = Long.parseLong((String) mergedConfig.getOrDefault(
+                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, COAST_CLEAR_MAX_WAIT_DURATION_MS_DEFAULT));
+        _coastClearCheckWaitDurationMs = Long.parseLong((String) mergedConfig.getOrDefault(
+                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, COAST_CLEAR_CHECK_WAIT_DURATION_MS_DEFAULT));
     }
 
     /**

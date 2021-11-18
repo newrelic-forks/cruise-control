@@ -143,8 +143,9 @@ public class Executor {
   public Executor(KafkaCruiseControlConfig config,
                   Time time,
                   MetricRegistry dropwizardMetricRegistry,
-                  AnomalyDetectorManager anomalyDetectorManager) {
-    this(config, time, dropwizardMetricRegistry, null, null, anomalyDetectorManager);
+                  AnomalyDetectorManager anomalyDetectorManager,
+                  CoastGuard coastGuard) {
+    this(config, time, dropwizardMetricRegistry, null, null, anomalyDetectorManager, coastGuard);
   }
 
   /**
@@ -158,7 +159,8 @@ public class Executor {
            MetricRegistry dropwizardMetricRegistry,
            MetadataClient metadataClient,
            ExecutorNotifier executorNotifier,
-           AnomalyDetectorManager anomalyDetectorManager) {
+           AnomalyDetectorManager anomalyDetectorManager,
+           CoastGuard coastGuard) {
     String zkUrl = config.getString(ExecutorConfig.ZOOKEEPER_CONNECT_CONFIG);
     _numExecutionStopped = new AtomicInteger(0);
     _numExecutionStoppedByUser = new AtomicInteger(0);
@@ -242,7 +244,7 @@ public class Executor {
                                                          ExecutionUtils.EXECUTION_HISTORY_SCANNER_PERIOD_SECONDS,
                                                          TimeUnit.SECONDS);
 
-    _coastGuard = new CoastGuard(_adminClient, _time, _config);
+    _coastGuard = coastGuard;
   }
 
   /**

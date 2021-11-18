@@ -95,7 +95,7 @@ public class GoalViolationDetector extends AbstractAnomalyDetector implements Ru
                                                                                       "goal-violation-detection-timer"));
     _provisioner = kafkaCruiseControl.provisioner();
     _isProvisionerEnabled = config.getBoolean(AnomalyDetectorConfig.PROVISIONER_ENABLE_CONFIG);
-    _coastGuard = new CoastGuard(kafkaCruiseControl.adminClient(), kafkaCruiseControl.time(), config);
+    _coastGuard = kafkaCruiseControl.coastGuard();
   }
 
   /**

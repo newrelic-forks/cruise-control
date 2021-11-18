@@ -34,6 +34,7 @@ import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.ModelParameters;
 import com.linkedin.kafka.cruisecontrol.model.ModelUtils;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
+import com.linkedin.kafka.cruisecontrol.monitor.CoastGuard;
 import com.linkedin.kafka.cruisecontrol.monitor.LoadMonitorState;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import com.linkedin.kafka.cruisecontrol.monitor.LoadMonitor;
@@ -85,6 +86,7 @@ public class KafkaCruiseControl {
   private final Time _time;
   private final AdminClient _adminClient;
   private final Provisioner _provisioner;
+  private final CoastGuard _coastGuard;
 
   private static final String VERSION;
   private static final String COMMIT_ID;
@@ -119,8 +121,9 @@ public class KafkaCruiseControl {
     _provisioner = config.getConfiguredInstance(AnomalyDetectorConfig.PROVISIONER_CLASS_CONFIG,
                                                 Provisioner.class,
                                                 Collections.singletonMap(KAFKA_CRUISE_CONTROL_OBJECT_CONFIG, this));
+    _coastGuard = new CoastGuard(_adminClient, _time, _config);
     _anomalyDetectorManager = new AnomalyDetectorManager(this, _time, dropwizardMetricRegistry);
-    _executor = new Executor(config, _time, dropwizardMetricRegistry, _anomalyDetectorManager);
+    _executor = new Executor(config, _time, dropwizardMetricRegistry, _anomalyDetectorManager, _coastGuard);
     _loadMonitor = new LoadMonitor(config, _time, dropwizardMetricRegistry, KafkaMetricDef.commonMetricDef());
     _goalOptimizerExecutor = Executors.newSingleThreadExecutor(new KafkaCruiseControlThreadFactory("GoalOptimizerExecutor"));
     _goalOptimizer = new GoalOptimizer(config, _loadMonitor, _time, dropwizardMetricRegistry, _executor, _adminClient);
@@ -136,7 +139,8 @@ public class KafkaCruiseControl {
                      LoadMonitor loadMonitor,
                      ExecutorService goalOptimizerExecutor,
                      GoalOptimizer goalOptimizer,
-                     Provisioner provisioner) {
+                     Provisioner provisioner,
+                     CoastGuard coastGuard) {
     _config = config;
     _time = time;
     _adminClient = createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(config));
@@ -146,6 +150,7 @@ public class KafkaCruiseControl {
     _goalOptimizerExecutor = goalOptimizerExecutor;
     _goalOptimizer = goalOptimizer;
     _provisioner = provisioner;
+    _coastGuard = coastGuard;
   }
 
   /**
@@ -214,10 +219,10 @@ public class KafkaCruiseControl {
   }
 
   /**
-   * @return The {@link Time} instance.
+   * @return {@link CoastGuard} of Cruise Control.
    */
-  public Time time() {
-    return _time;
+  public CoastGuard coastGuard() {
+    return _coastGuard;
   }
 
   /**

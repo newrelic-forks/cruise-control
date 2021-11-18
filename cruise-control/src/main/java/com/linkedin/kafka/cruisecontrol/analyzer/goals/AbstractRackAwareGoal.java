@@ -15,6 +15,7 @@ import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.Replica;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
+import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.stream.Collectors;
@@ -34,6 +35,10 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.replicaS
 public abstract class AbstractRackAwareGoal extends AbstractGoal {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractRackAwareGoal.class);
 
+  private static final String FOLLOWERS_ONLY_CONFIG = "rack.aware.goal.followers.only";
+
+  private boolean _moveFollowersOnly = false;
+
   @Override
   public ClusterModelStatsComparator clusterModelStatsComparator() {
     return new GoalUtils.HardGoalStatsComparator();
@@ -52,6 +57,12 @@ public abstract class AbstractRackAwareGoal extends AbstractGoal {
   @Override
   protected boolean selfSatisfied(ClusterModel clusterModel, BalancingAction action) {
     return true;
+  }
+
+  @Override
+  public void configure(Map<String, ?> configs) {
+    super.configure(configs);
+    _moveFollowersOnly = "true".equals(configs.get(FOLLOWERS_ONLY_CONFIG));
   }
 
   /**
@@ -128,9 +139,7 @@ public abstract class AbstractRackAwareGoal extends AbstractGoal {
       if (broker.isAlive() && !broker.currentOfflineReplicas().contains(replica) && shouldKeepInTheCurrentBroker(replica, clusterModel)) {
         continue;
       }
-      if (replica.isLeader()) {
-        // This goal should be able to be accomplished by moving only followers around; also seeking to move only
-        // followers around should make the RackAwareGoal play more nicely with the TopicLeadershipDistributionGoal.
+      if (_moveFollowersOnly && replica.isLeader()) {
         continue;
       }
       // The relevant rack awareness condition is violated. Move replica to an eligible broker
