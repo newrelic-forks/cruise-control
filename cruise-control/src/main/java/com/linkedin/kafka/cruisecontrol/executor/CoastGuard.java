@@ -44,7 +44,7 @@ public class CoastGuard {
     private final long _coastClearMaxWaitDurationMs;
     private final long _coastClearCheckWaitDurationMs;
 
-    CoastGuard(AdminClient adminClient, Time time, KafkaCruiseControlConfig config) {
+    public CoastGuard(AdminClient adminClient, Time time, KafkaCruiseControlConfig config) {
         _adminClient = adminClient;
         _time = time;
         _waitExecutor = Executors.newSingleThreadExecutor(new KafkaCruiseControlThreadFactory("CoastGuard", false, LOG));
@@ -63,7 +63,7 @@ public class CoastGuard {
      * {@code COAST_CLEAR_MIN_DURATION_MS_CONFIG} milliseconds of fully-replicated partitions and fully-preferred
      * leaders.
      */
-    void waitForCoastClear() throws ExecutionException, InterruptedException, TimeoutException {
+    public void waitForCoastClear() throws ExecutionException, InterruptedException, TimeoutException {
         if (_isEnabled) {
             _waitExecutor
                     .submit(new WaitForCoastClear())
@@ -72,11 +72,9 @@ public class CoastGuard {
     }
 
     /**
-     * Package private for unit test.
-     *
-     * @return true if there are no under-replicated partitions or non-preferred leaders, false otherwise
+     * @return True if there are no under-replicated partitions or non-preferred leaders, false otherwise.
      */
-    boolean isCoastClear() throws ExecutionException, InterruptedException {
+    public boolean isCoastClear() throws ExecutionException, InterruptedException {
         ListTopicsResult listTopicsResult = _adminClient.listTopics();
         Set<String> topicNames = listTopicsResult.names().get();
 
@@ -86,11 +84,13 @@ public class CoastGuard {
         for (TopicDescription topicDescription : topicDescriptions.values()) {
             for (TopicPartitionInfo topicPartitionInfo : topicDescription.partitions()) {
                 if (topicPartitionInfo.isr().size() < topicPartitionInfo.replicas().size()) {
-                    // Under-replicated partition detected.
+                    LOG.debug("Under-replicated partition of topic {} detected: {}",
+                            topicDescription.name(), topicPartitionInfo);
                     return false;
                 }
                 if (topicPartitionInfo.leader() != topicPartitionInfo.replicas().get(0)) {
-                    // Non-preferred leader detected.
+                    LOG.debug("Non-preferred leader detected for topic {}: {}",
+                            topicDescription.name(), topicPartitionInfo);
                     return false;
                 }
             }

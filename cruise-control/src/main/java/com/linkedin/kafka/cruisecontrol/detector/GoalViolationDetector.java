@@ -22,6 +22,7 @@ import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnomalyDetectorConfig;
 import com.linkedin.kafka.cruisecontrol.exception.KafkaCruiseControlException;
 import com.linkedin.kafka.cruisecontrol.exception.OptimizationFailureException;
+import com.linkedin.kafka.cruisecontrol.executor.CoastGuard;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
@@ -68,6 +69,7 @@ public class GoalViolationDetector extends AbstractAnomalyDetector implements Ru
   protected static final double BALANCEDNESS_SCORE_WITH_OFFLINE_REPLICAS = -1.0;
   protected final Provisioner _provisioner;
   protected final Boolean _isProvisionerEnabled;
+  private final CoastGuard _coastGuard;
 
   public GoalViolationDetector(Queue<Anomaly> anomalies, KafkaCruiseControl kafkaCruiseControl, MetricRegistry dropwizardMetricRegistry) {
     super(anomalies, kafkaCruiseControl);
@@ -93,6 +95,7 @@ public class GoalViolationDetector extends AbstractAnomalyDetector implements Ru
                                                                                       "goal-violation-detection-timer"));
     _provisioner = kafkaCruiseControl.provisioner();
     _isProvisionerEnabled = config.getBoolean(AnomalyDetectorConfig.PROVISIONER_ENABLE_CONFIG);
+    _coastGuard = new CoastGuard(kafkaCruiseControl.adminClient(), kafkaCruiseControl.time(), config);
   }
 
   /**
@@ -202,6 +205,11 @@ public class GoalViolationDetector extends AbstractAnomalyDetector implements Ru
               // If the clusterModel contains dead brokers or disks, goal violation detector will ignore any goal violations.
               // Detection and fix for dead brokers/disks is the responsibility of broker/disk failure detector.
               if (skipDueToOfflineReplicas(clusterModel)) {
+                LOG.warn("Dead brokers/disks detected; skipping goal violation detection for {}", goal.name());
+                return;
+              }
+              if (!_coastGuard.isCoastClear()) {
+                LOG.warn("Coast is not clear; skipping goal violation detection for {}", goal.name());
                 return;
               }
               _lastCheckedModelGeneration = clusterModel.generation();
