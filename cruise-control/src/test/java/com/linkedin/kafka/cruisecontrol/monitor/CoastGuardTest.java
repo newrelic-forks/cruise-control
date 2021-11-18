@@ -72,9 +72,9 @@ public class CoastGuardTest {
         KafkaCruiseControlConfig config = mock(KafkaCruiseControlConfig.class);
         expect(config.mergedConfigValues()).andReturn(Map.of(
                 IS_ENABLED_CONFIG, "true",
-                COAST_CLEAR_MIN_DURATION_MS_CONFIG, 30000L,
-                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, 120000L,
-                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, 500L)).times(1);
+                COAST_CLEAR_MIN_DURATION_MS_CONFIG, "30000",
+                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, "120000",
+                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, "500")).times(1);
         replay(config);
 
         CoastGuard coastGuard = new CoastGuard(adminClient, mock(Time.class), config);
@@ -116,9 +116,9 @@ public class CoastGuardTest {
         KafkaCruiseControlConfig config = mock(KafkaCruiseControlConfig.class);
         expect(config.mergedConfigValues()).andReturn(Map.of(
                 IS_ENABLED_CONFIG, "true",
-                COAST_CLEAR_MIN_DURATION_MS_CONFIG, 30000L,
-                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, 120000L,
-                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, 500L)).times(1);
+                COAST_CLEAR_MIN_DURATION_MS_CONFIG, "30000",
+                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, "120000",
+                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, "500")).times(1);
         replay(config);
 
         CoastGuard coastGuard = new CoastGuard(adminClient, mock(Time.class), config);
@@ -160,9 +160,9 @@ public class CoastGuardTest {
         KafkaCruiseControlConfig config = mock(KafkaCruiseControlConfig.class);
         expect(config.mergedConfigValues()).andReturn(Map.of(
                 IS_ENABLED_CONFIG, "true",
-                COAST_CLEAR_MIN_DURATION_MS_CONFIG, 30000L,
-                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, 120000L,
-                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, 500L)).times(1);
+                COAST_CLEAR_MIN_DURATION_MS_CONFIG, "30000",
+                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, "120000",
+                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, "500")).times(1);
         replay(config);
 
         CoastGuard coastGuard = new CoastGuard(adminClient, mock(Time.class), config);
@@ -173,12 +173,12 @@ public class CoastGuardTest {
     public void testWaitForCoastClearTimesOut() throws ExecutionException, InterruptedException {
         @SuppressWarnings("rawtypes")
         KafkaFuture listTopicsNamesFuture = mock(KafkaFuture.class);
-        expect(listTopicsNamesFuture.get()).andReturn(Set.of("dummy_topic_1")).times(11);
+        expect(listTopicsNamesFuture.get()).andReturn(Set.of("dummy_topic_1")).anyTimes();
         replay(listTopicsNamesFuture);
 
         ListTopicsResult listTopicsResult = mock(ListTopicsResult.class);
         //noinspection unchecked
-        expect(listTopicsResult.names()).andReturn(listTopicsNamesFuture).times(11);
+        expect(listTopicsResult.names()).andReturn(listTopicsNamesFuture).anyTimes();
         replay(listTopicsResult);
 
         @SuppressWarnings("rawtypes")
@@ -188,25 +188,25 @@ public class CoastGuardTest {
                         new TopicPartitionInfo(0, NODE_1, List.of(NODE_1, NODE_2, NODE_3), List.of(NODE_1, NODE_2, NODE_3)),
                         new TopicPartitionInfo(0, NODE_1, List.of(NODE_1, NODE_2, NODE_3), List.of(NODE_1, NODE_2))
                 ))
-        )).times(11);
+        )).anyTimes();
         replay(describeTopicsAllFuture);
 
         DescribeTopicsResult describeTopicsResult = mock(DescribeTopicsResult.class);
         //noinspection unchecked
-        expect(describeTopicsResult.all()).andReturn(describeTopicsAllFuture).times(11);
+        expect(describeTopicsResult.all()).andReturn(describeTopicsAllFuture).anyTimes();
         replay(describeTopicsResult);
 
         AdminClient adminClient = mock(AdminClient.class);
-        expect(adminClient.listTopics()).andReturn(listTopicsResult).times(11);
-        expect(adminClient.describeTopics(Set.of("dummy_topic_1"))).andReturn(describeTopicsResult).times(11);
+        expect(adminClient.listTopics()).andReturn(listTopicsResult).anyTimes();
+        expect(adminClient.describeTopics(Set.of("dummy_topic_1"))).andReturn(describeTopicsResult).anyTimes();
         replay(adminClient);
 
         KafkaCruiseControlConfig config = mock(KafkaCruiseControlConfig.class);
         expect(config.mergedConfigValues()).andReturn(Map.of(
                 IS_ENABLED_CONFIG, "true",
-                COAST_CLEAR_MIN_DURATION_MS_CONFIG, 1000L,
-                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, 5000L,
-                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, 500L)).times(1);
+                COAST_CLEAR_MIN_DURATION_MS_CONFIG, "30000",
+                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, "120000",
+                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, "500")).times(1);
         replay(config);
 
         CoastGuard coastGuard = new CoastGuard(adminClient, new SystemTime(), config);
@@ -224,12 +224,12 @@ public class CoastGuardTest {
     public void testNotEnabled() throws ExecutionException, InterruptedException, TimeoutException {
         @SuppressWarnings("rawtypes")
         KafkaFuture listTopicsNamesFuture = mock(KafkaFuture.class);
-        expect(listTopicsNamesFuture.get()).andReturn(Set.of("dummy_topic_1")).times(11);
+        expect(listTopicsNamesFuture.get()).andReturn(Set.of("dummy_topic_1")).anyTimes();
         replay(listTopicsNamesFuture);
 
         ListTopicsResult listTopicsResult = mock(ListTopicsResult.class);
         //noinspection unchecked
-        expect(listTopicsResult.names()).andReturn(listTopicsNamesFuture).times(11);
+        expect(listTopicsResult.names()).andReturn(listTopicsNamesFuture).anyTimes();
         replay(listTopicsResult);
 
         @SuppressWarnings("rawtypes")
@@ -239,25 +239,25 @@ public class CoastGuardTest {
                         new TopicPartitionInfo(0, NODE_1, List.of(NODE_1, NODE_2, NODE_3), List.of(NODE_1, NODE_2, NODE_3)),
                         new TopicPartitionInfo(0, NODE_1, List.of(NODE_1, NODE_2, NODE_3), List.of(NODE_1, NODE_2))
                 ))
-        )).times(11);
+        )).anyTimes();
         replay(describeTopicsAllFuture);
 
         DescribeTopicsResult describeTopicsResult = mock(DescribeTopicsResult.class);
         //noinspection unchecked
-        expect(describeTopicsResult.all()).andReturn(describeTopicsAllFuture).times(11);
+        expect(describeTopicsResult.all()).andReturn(describeTopicsAllFuture).anyTimes();
         replay(describeTopicsResult);
 
         AdminClient adminClient = mock(AdminClient.class);
-        expect(adminClient.listTopics()).andReturn(listTopicsResult).times(11);
-        expect(adminClient.describeTopics(Set.of("dummy_topic_1"))).andReturn(describeTopicsResult).times(11);
+        expect(adminClient.listTopics()).andReturn(listTopicsResult).anyTimes();
+        expect(adminClient.describeTopics(Set.of("dummy_topic_1"))).andReturn(describeTopicsResult).anyTimes();
         replay(adminClient);
 
         KafkaCruiseControlConfig config = mock(KafkaCruiseControlConfig.class);
         expect(config.mergedConfigValues()).andReturn(Map.of(
                 IS_ENABLED_CONFIG, "false",
-                COAST_CLEAR_MIN_DURATION_MS_CONFIG, 1000L,
-                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, 5000L,
-                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, 500L)).times(1);
+                COAST_CLEAR_MIN_DURATION_MS_CONFIG, "30000",
+                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, "120000",
+                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, "500")).times(1);
         replay(config);
 
         CoastGuard coastGuard = new CoastGuard(adminClient, new SystemTime(), config);
@@ -299,9 +299,9 @@ public class CoastGuardTest {
         KafkaCruiseControlConfig config = mock(KafkaCruiseControlConfig.class);
         expect(config.mergedConfigValues()).andReturn(Map.of(
                 IS_ENABLED_CONFIG, "true",
-                COAST_CLEAR_MIN_DURATION_MS_CONFIG, 30000L,
-                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, 120000L,
-                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, 500L)).times(1);
+                COAST_CLEAR_MIN_DURATION_MS_CONFIG, "30000",
+                COAST_CLEAR_MAX_WAIT_DURATION_MS_CONFIG, "120000",
+                COAST_CLEAR_CHECK_WAIT_DURATION_MS_CONFIG, "500")).times(1);
         replay(config);
 
         Time time = new MockTime(List.of(1L, 29999L, 30001L));
