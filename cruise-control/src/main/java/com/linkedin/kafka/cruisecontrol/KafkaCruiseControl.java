@@ -214,6 +214,13 @@ public class KafkaCruiseControl {
   }
 
   /**
+   * @return The {@link Time} instance.
+   */
+  public Time time() {
+    return _time;
+  }
+
+  /**
    * Start up the Cruise Control.
    */
   public void startUp() {
