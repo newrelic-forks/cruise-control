@@ -164,19 +164,15 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         private final Set<Broker> _allowedBrokers;
         private final Set<Rack> _allowedRacks;
 
-        private final Map<Rack, Integer> _countsByRack = new HashMap<>();
-        private final Map<Broker, Integer> _countsByBroker = new HashMap<>();
+        private final Map<Rack, Integer> _countsByRack;
+        private final Map<Broker, Integer> _countsByBroker;
 
         private LeadershipCounts(ClusterModel clusterModel, Set<Integer> allowedBrokerIds, String topic) {
             _allowedBrokers = allowedBrokerIds.stream().map(clusterModel::broker).collect(Collectors.toSet());
             _allowedRacks = _allowedBrokers.stream().map(Broker::rack).collect(Collectors.toSet());
 
-            for (Partition partition : clusterModel.getPartitionsByTopic().get(topic)) {
-                Broker leader = partition.leader().broker();
-
-                _countsByRack.compute(leader.rack(), (k, v) -> v == null ? 1 : v + 1);
-                _countsByBroker.compute(leader, (k, v) -> v == null ? 1 : v + 1);
-            }
+            _countsByRack = clusterModel.getNumLeadReplicasByRack(topic);
+            _countsByBroker = clusterModel.getNumLeadReplicasByBroker(topic);
         }
 
         private void incrementCount(Broker broker) {

@@ -36,6 +36,7 @@ import com.linkedin.kafka.cruisecontrol.monitor.sampling.holder.PartitionMetricS
 import com.linkedin.kafka.cruisecontrol.monitor.task.LoadMonitorTaskRunner;
 import com.linkedin.kafka.cruisecontrol.servlet.response.stats.BrokerStats;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -394,6 +395,8 @@ public class LoadMonitor {
     _clusterModelSemaphore.acquire();
     _acquiredClusterModelSemaphore.set(true);
     step.done();
+    LOG.info("Cluster model lock acquired:");
+    LOG.info(Arrays.toString(Thread.currentThread().getStackTrace()));
     return new AutoCloseableSemaphore();
   }
 
