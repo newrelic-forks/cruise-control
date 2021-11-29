@@ -61,6 +61,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
     private Set<String> _allowedTopics;
     private Set<Broker> _allowedBrokers;
+    private Set<Rack> _allowedRacks;
 
     private final Map<String, Integer> _targetNumLeadReplicasPerRackByTopic;
     private final Map<String, Map<String, Integer>> _numLeadReplicasByTopicByRackId;
@@ -125,7 +126,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         if (actionType.equals(ActionType.LEADERSHIP_MOVEMENT)
                 || actionType.equals(ActionType.INTER_BROKER_REPLICA_MOVEMENT)
                 || actionType.equals(ActionType.INTER_BROKER_REPLICA_SWAP)) {
-            LeadershipCounts counts = new LeadershipCounts(clusterModel, _allowedBrokers, topic);
+            LeadershipCounts counts = new LeadershipCounts(clusterModel, _allowedBrokers, _allowedRacks, topic);
 
             if (replica.isLeader()) {
                 counts.decrementCount(sourceBroker);
@@ -143,7 +144,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                     // Destination replica does not exist so this is definitely not a valid move.
                     return ActionAcceptance.REPLICA_REJECT;
                 } else if (otherReplica.isLeader()) {
-                    LeadershipCounts otherTopicCounts = new LeadershipCounts(clusterModel, _allowedBrokers, otherTopic);
+                    LeadershipCounts otherTopicCounts = new LeadershipCounts(clusterModel, _allowedBrokers, _allowedRacks, otherTopic);
 
                     otherTopicCounts.decrementCount(destinationBroker);
                     otherTopicCounts.incrementCount(sourceBroker);
@@ -167,9 +168,13 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         private final Map<Rack, Integer> _countsByRack;
         private final Map<Broker, Integer> _countsByBroker;
 
-        private LeadershipCounts(ClusterModel clusterModel, Set<Broker> allowedBrokers, String topic) {
+        private LeadershipCounts(
+                ClusterModel clusterModel,
+                Set<Broker> allowedBrokers,
+                Set<Rack> allowedRacks,
+                String topic) {
             _allowedBrokers = allowedBrokers;
-            _allowedRacks = _allowedBrokers.stream().map(Broker::rack).collect(Collectors.toSet());
+            _allowedRacks = allowedRacks;
 
             _countsByRack = clusterModel.getNumLeadReplicasByRack(topic);
             _countsByBroker = clusterModel.getNumLeadReplicasByBroker(topic);
@@ -294,16 +299,12 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             logAndThrowOptimizationFailureException("Cannot take any action as all alive brokers are excluded from leadership.");
         }
 
+        _allowedRacks = _allowedBrokers.stream().map(Broker::rack).collect(Collectors.toSet());
+
         _targetNumLeadReplicasPerRackByTopic.clear();
         _numLeadReplicasByTopicByRackId.clear();
         _targetNumLeadReplicasPerBrokerByTopic.clear();
         _numLeadReplicasByTopicByBrokerId.clear();
-
-        Set<Rack> racks = new HashSet<>();
-
-        for (Broker broker : _allowedBrokers) {
-            racks.add(broker.rack());
-        }
 
         SortedMap<String, List<Partition>> partitionsByTopic = clusterModel.getPartitionsByTopic();
 
@@ -311,7 +312,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             // Each partition has one leader so the # of leaders is the same as the # of partitions.
             int numLeadReplicas = partitionsByTopic.get(topic).size();
 
-            int targetNumLeadReplicasPerRack = Math.floorDiv(numLeadReplicas, racks.size());
+            int targetNumLeadReplicasPerRack = Math.floorDiv(numLeadReplicas, _allowedRacks.size());
             _targetNumLeadReplicasPerRackByTopic.put(topic, targetNumLeadReplicasPerRack);
 
             int targetNumLeadReplicasPerBroker = Math.floorDiv(numLeadReplicas, _allowedBrokers.size());
