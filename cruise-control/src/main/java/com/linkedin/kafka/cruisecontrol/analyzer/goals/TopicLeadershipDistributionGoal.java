@@ -60,7 +60,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     private boolean _shouldSkipPerRackPhase = false;
 
     private Set<String> _allowedTopics;
-    private Set<Integer> _allowedBrokerIds;
+    private Set<Broker> _allowedBrokers;
 
     private final Map<String, Integer> _targetNumLeadReplicasPerRackByTopic;
     private final Map<String, Map<String, Integer>> _numLeadReplicasByTopicByRackId;
@@ -125,7 +125,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         if (actionType.equals(ActionType.LEADERSHIP_MOVEMENT)
                 || actionType.equals(ActionType.INTER_BROKER_REPLICA_MOVEMENT)
                 || actionType.equals(ActionType.INTER_BROKER_REPLICA_SWAP)) {
-            LeadershipCounts counts = new LeadershipCounts(clusterModel, _allowedBrokerIds, topic);
+            LeadershipCounts counts = new LeadershipCounts(clusterModel, _allowedBrokers, topic);
 
             if (replica.isLeader()) {
                 counts.decrementCount(sourceBroker);
@@ -143,7 +143,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                     // Destination replica does not exist so this is definitely not a valid move.
                     return ActionAcceptance.REPLICA_REJECT;
                 } else if (otherReplica.isLeader()) {
-                    LeadershipCounts otherTopicCounts = new LeadershipCounts(clusterModel, _allowedBrokerIds, otherTopic);
+                    LeadershipCounts otherTopicCounts = new LeadershipCounts(clusterModel, _allowedBrokers, otherTopic);
 
                     otherTopicCounts.decrementCount(destinationBroker);
                     otherTopicCounts.incrementCount(sourceBroker);
@@ -164,19 +164,15 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         private final Set<Broker> _allowedBrokers;
         private final Set<Rack> _allowedRacks;
 
-        private final Map<Rack, Integer> _countsByRack = new HashMap<>();
-        private final Map<Broker, Integer> _countsByBroker = new HashMap<>();
+        private final Map<Rack, Integer> _countsByRack;
+        private final Map<Broker, Integer> _countsByBroker;
 
-        private LeadershipCounts(ClusterModel clusterModel, Set<Integer> allowedBrokerIds, String topic) {
-            _allowedBrokers = allowedBrokerIds.stream().map(clusterModel::broker).collect(Collectors.toSet());
+        private LeadershipCounts(ClusterModel clusterModel, Set<Broker> allowedBrokers, String topic) {
+            _allowedBrokers = allowedBrokers;
             _allowedRacks = _allowedBrokers.stream().map(Broker::rack).collect(Collectors.toSet());
 
-            for (Partition partition : clusterModel.getPartitionsByTopic().get(topic)) {
-                Broker leader = partition.leader().broker();
-
-                _countsByRack.compute(leader.rack(), (k, v) -> v == null ? 1 : v + 1);
-                _countsByBroker.compute(leader, (k, v) -> v == null ? 1 : v + 1);
-            }
+            _countsByRack = clusterModel.getNumLeadReplicasByRack(topic);
+            _countsByBroker = clusterModel.getNumLeadReplicasByBroker(topic);
         }
 
         private void incrementCount(Broker broker) {
@@ -259,7 +255,6 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                     Broker destinationBroker = clusterModel.broker(action.destinationBrokerId());
 
                     return isTopicBalancedPerRack(
-                            clusterModel,
                             action.topic(),
                             sourceBroker.rack().id(),
                             destinationBroker.rack().id());
@@ -291,12 +286,11 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         }
 
         Set<Integer> excludedBrokers = optimizationOptions.excludedBrokersForLeadership();
-        _allowedBrokerIds = clusterModel.aliveBrokers().stream()
-                .map(Broker::id)
-                .filter(b -> !excludedBrokers.contains(b))
+        _allowedBrokers = clusterModel.aliveBrokers().stream()
+                .filter(b -> !excludedBrokers.contains(b.id()))
                 .collect(Collectors.toCollection(HashSet::new));
 
-        if (_allowedBrokerIds.isEmpty()) {
+        if (_allowedBrokers.isEmpty()) {
             logAndThrowOptimizationFailureException("Cannot take any action as all alive brokers are excluded from leadership.");
         }
 
@@ -307,8 +301,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
 
         Set<Rack> racks = new HashSet<>();
 
-        for (Integer brokerId : _allowedBrokerIds) {
-            Broker broker = clusterModel.broker(brokerId);
+        for (Broker broker : _allowedBrokers) {
             racks.add(broker.rack());
         }
 
@@ -321,7 +314,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             int targetNumLeadReplicasPerRack = Math.floorDiv(numLeadReplicas, racks.size());
             _targetNumLeadReplicasPerRackByTopic.put(topic, targetNumLeadReplicasPerRack);
 
-            int targetNumLeadReplicasPerBroker = Math.floorDiv(numLeadReplicas, _allowedBrokerIds.size());
+            int targetNumLeadReplicasPerBroker = Math.floorDiv(numLeadReplicas, _allowedBrokers.size());
             _targetNumLeadReplicasPerBrokerByTopic.put(topic, targetNumLeadReplicasPerBroker);
 
             Map<String, Integer> numLeadReplicasPerRack = new HashMap<>();
@@ -362,7 +355,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 boolean isBalancedPerRack = true;
 
                 for (String topic : _allowedTopics) {
-                    if (!isTopicBalancedPerRack(clusterModel, topic)) {
+                    if (!isTopicBalancedPerRack(topic)) {
                         isBalancedPerRack = false;
                     }
                 }
@@ -400,8 +393,8 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 case PER_RACK:
                     int targetPerRack = _targetNumLeadReplicasPerRackByTopic.get(topic);
 
-                    Set<String> rackIds = _allowedBrokerIds.stream()
-                            .map(b -> clusterModel.broker(b).rack().id())
+                    Set<String> rackIds = _allowedBrokers.stream()
+                            .map(b -> b.rack().id())
                             .collect(Collectors.toSet());
 
                     for (String rackId : rackIds) {
@@ -412,8 +405,8 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 case PER_BROKER:
                     int targetPerBroker = _targetNumLeadReplicasPerBrokerByTopic.get(topic);
 
-                    for (int brokerId : _allowedBrokerIds) {
-                        int count = _numLeadReplicasByTopicByBrokerId.get(topic).getOrDefault(brokerId, 0);
+                    for (Broker broker : _allowedBrokers) {
+                        int count = _numLeadReplicasByTopicByBrokerId.get(topic).getOrDefault(broker.id(), 0);
                         totalDelta += Math.abs(targetPerBroker - count);
                     }
                     break;
@@ -428,7 +421,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             for (String topic : _allowedTopics) {
                 switch (_rebalancePhase) {
                     case PER_RACK:
-                        if (!isTopicBalancedPerRack(clusterModel, topic)) {
+                        if (!isTopicBalancedPerRack(topic)) {
                             s.append(prettyPrintedLeadershipDistributionByRack(clusterModel, topic));
                         }
                         break;
@@ -454,7 +447,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
             ClusterModel clusterModel,
             Set<Goal> optimizedGoals,
             OptimizationOptions optimizationOptions) throws OptimizationFailureException {
-        if (!_allowedBrokerIds.contains(broker.id())) {
+        if (!_allowedBrokers.contains(broker)) {
             return;
         }
 
@@ -467,7 +460,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 case PER_RACK:
                     LOG.debug("Re-balancing for broker {} in rack {} and topic {}", broker.id(), broker.rack().id(), topic);
 
-                    if (!isTopicBalancedPerRack(clusterModel, topic)) {
+                    if (!isTopicBalancedPerRack(topic)) {
                         int numLeadReplicasInRack = _numLeadReplicasByTopicByRackId
                                 .get(topic)
                                 .getOrDefault(broker.rack().id(), 0);
@@ -508,15 +501,14 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
-    private boolean isTopicBalancedPerRack(ClusterModel clusterModel, String topic) {
-        return isTopicBalancedPerRack(clusterModel, topic, null, null);
+    private boolean isTopicBalancedPerRack(String topic) {
+        return isTopicBalancedPerRack(topic, null, null);
     }
 
     /**
      * This method works similarly to {@link #isTopicBalancedPerBroker(String topic)} but on a per-rack basis instead
      * of a per-broker basis.
      *
-     * @param clusterModel {@link ClusterModel}
      * @param topic the topic to check
      * @param sourceRackId if considering a proposed action, this is the rack the lead replica is moving from (null if
      *                     not considering a proposed action)
@@ -527,15 +519,14 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
      * @see #isTopicBalancedPerBroker(String)
      */
     private boolean isTopicBalancedPerRack(
-            ClusterModel clusterModel,
             String topic,
             String sourceRackId,
             String destinationRackId) {
         Map<String, Integer> numLeadReplicasByRackId = _numLeadReplicasByTopicByRackId.get(topic);
         Integer target = _targetNumLeadReplicasPerRackByTopic.get(topic);
 
-        Set<String> rackIds = _allowedBrokerIds.stream()
-                .map(b -> clusterModel.broker(b).rack().id())
+        Set<String> rackIds = _allowedBrokers.stream()
+                .map(b -> b.rack().id())
                 .collect(Collectors.toSet());
 
         for (String rackId : rackIds) {
@@ -571,8 +562,8 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         Map<Integer, Integer> numLeadReplicasByBrokerId = _numLeadReplicasByTopicByBrokerId.get(topic);
         int target = _targetNumLeadReplicasPerBrokerByTopic.get(topic);
 
-        for (int brokerId : _allowedBrokerIds) {
-            int numLeadReplicas = numLeadReplicasByBrokerId.getOrDefault(brokerId, 0);
+        for (Broker broker : _allowedBrokers) {
+            int numLeadReplicas = numLeadReplicasByBrokerId.getOrDefault(broker.id(), 0);
 
             if (numLeadReplicas < target || numLeadReplicas > target + 1) {
                 return false;
@@ -677,8 +668,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
                 Set<Broker> primaryCandidates = new HashSet<>();
                 Set<Broker> secondaryCandidates = new HashSet<>();
 
-                for (int brokerId : _allowedBrokerIds) {
-                    Broker broker = clusterModel.broker(brokerId);
+                for (Broker broker : _allowedBrokers) {
                     int numLeadReplicasInRack = numLeadReplicasByRackId.getOrDefault(broker.rack().id(), 0);
 
                     if (numLeadReplicasInRack < targetNumLeadReplicasPerRack) {
@@ -731,7 +721,7 @@ public class TopicLeadershipDistributionGoal extends AbstractGoal {
         Map<Integer, Integer> numLeadReplicasByBrokerId = _numLeadReplicasByTopicByBrokerId.get(topic);
 
         return clusterModel.aliveBrokers().stream()
-                .filter(b -> _allowedBrokerIds.contains(b.id()))
+                .filter(b -> _allowedBrokers.contains(b))
                 .filter(b -> {
                     int numLeadReplicas = numLeadReplicasByBrokerId.getOrDefault(b.id(), 0);
                     return onTarget ? numLeadReplicas == target : numLeadReplicas < target;
