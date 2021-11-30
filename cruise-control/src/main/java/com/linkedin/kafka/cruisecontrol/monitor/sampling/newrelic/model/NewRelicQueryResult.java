@@ -145,7 +145,7 @@ public class NewRelicQueryResult {
 
     @Override
     public String toString() {
-        return "NewRelic Query Result: " + _results.toString();
+        return "NewRelic Query Result: " + _results;
     }
 
     public static void setupQuerySupplier(NewRelicQuerySupplier querySupplier) {

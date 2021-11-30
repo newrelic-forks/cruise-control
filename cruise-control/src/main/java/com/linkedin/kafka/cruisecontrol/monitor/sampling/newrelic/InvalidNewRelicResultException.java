@@ -14,5 +14,4 @@ public class InvalidNewRelicResultException extends KafkaCruiseControlException 
     public InvalidNewRelicResultException(String message) {
         super(message);
     }
-
 }
