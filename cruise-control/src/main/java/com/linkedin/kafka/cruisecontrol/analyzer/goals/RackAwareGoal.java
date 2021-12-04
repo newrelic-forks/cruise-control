@@ -5,8 +5,8 @@
 
 package com.linkedin.kafka.cruisecontrol.analyzer.goals;
 
-import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
 import com.linkedin.kafka.cruisecontrol.analyzer.BalancingConstraint;
+import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionRecommendation;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionResponse;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionStatus;
@@ -14,8 +14,6 @@ import com.linkedin.kafka.cruisecontrol.exception.OptimizationFailureException;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.Replica;
-import com.linkedin.kafka.cruisecontrol.model.ReplicaSortFunctionFactory;
-import com.linkedin.kafka.cruisecontrol.model.SortedReplicasHelper;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -24,8 +22,6 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
-
-import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.replicaSortName;
 
 
 /**
@@ -77,6 +73,8 @@ public class RackAwareGoal extends AbstractRackAwareGoal {
   @Override
   protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
       throws OptimizationFailureException {
+    super.initGoalState(clusterModel, optimizationOptions);
+
     // Sanity Check: not enough racks to satisfy rack awareness.
     int numAliveRacks = clusterModel.numAliveRacks();
     Set<String> excludedTopics = optimizationOptions.excludedTopics();
@@ -113,37 +111,6 @@ public class RackAwareGoal extends AbstractRackAwareGoal {
           .numRacks(numRacksToDrop).build();
       _provisionResponse = new ProvisionResponse(ProvisionStatus.OVER_PROVISIONED, recommendation, name());
     }
-
-    // Filter out some replicas based on optimization options.
-    new SortedReplicasHelper().maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectImmigrants(),
-                                                     optimizationOptions.onlyMoveImmigrantReplicas())
-                              .maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectReplicasBasedOnExcludedTopics(excludedTopics),
-                                                     !excludedTopics.isEmpty())
-                              .trackSortedReplicasFor(replicaSortName(this, false, false), clusterModel);
-  }
-
-  /**
-   * Update goal state.
-   * Sanity check: After completion of balancing / self-healing, confirm that replicas of each partition reside at a
-   * separate rack.
-   *
-   * @param clusterModel The state of the cluster.
-   * @param optimizationOptions Options to take into account during optimization.
-   */
-  @Override
-  protected void updateGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
-      throws OptimizationFailureException {
-    // One pass is sufficient to satisfy or alert impossibility of this goal.
-    // Sanity check to confirm that the final distribution is rack aware.
-    ensureRackAware(clusterModel, optimizationOptions);
-    // Sanity check: No self-healing eligible replica should remain at a dead broker/disk.
-    GoalUtils.ensureNoOfflineReplicas(clusterModel, name());
-    // Sanity check: No replica should be moved to a broker, which used to host any replica of the same partition on its broken disk.
-    GoalUtils.ensureReplicasMoveOffBrokersWithBadDisks(clusterModel, name());
-    if (_provisionResponse.status() != ProvisionStatus.OVER_PROVISIONED) {
-      _provisionResponse = new ProvisionResponse(ProvisionStatus.RIGHT_SIZED);
-    }
-    finish();
   }
 
   /**
@@ -162,8 +129,14 @@ public class RackAwareGoal extends AbstractRackAwareGoal {
     rebalanceForBroker(broker, clusterModel, optimizedGoals, optimizationOptions, true);
   }
 
-  private void ensureRackAware(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
-      throws OptimizationFailureException {
+  /**
+   * Confirm that replicas of each partition reside in a separate rack.
+   *
+   * @param clusterModel The state of the cluster.
+   * @param optimizationOptions Options to take into account during optimization.
+   * @throws OptimizationFailureException if goal has not been achieved.
+   */
+  protected void ensureGoalAchievement(ClusterModel clusterModel, OptimizationOptions optimizationOptions) throws OptimizationFailureException {
     // Sanity check to confirm that the final distribution is rack aware.
     Set<String> excludedTopics = optimizationOptions.excludedTopics();
     for (Replica leader : clusterModel.leaderReplicas()) {
@@ -184,9 +157,9 @@ public class RackAwareGoal extends AbstractRackAwareGoal {
         int missingRacks = (followerBrokers.size() + 1) - replicaBrokersRackIds.size();
         ProvisionRecommendation recommendation = new ProvisionRecommendation.Builder(ProvisionStatus.UNDER_PROVISIONED)
             .numRacks(missingRacks).build();
-        throw new OptimizationFailureException(String.format("[%s] Partition %s is not rack-aware. Leader (%s) and follower brokers (%s).",
-                                                             name(), leader.topicPartition(), leader.broker(), followerBrokers),
-                                               recommendation);
+        throw new OptimizationFailureException(
+                    String.format("[%s] Partition %s is not rack-aware. Leader (%s) and follower brokers (%s).",
+                            name(), leader.topicPartition(), leader.broker(), followerBrokers), recommendation);
       }
     }
   }
