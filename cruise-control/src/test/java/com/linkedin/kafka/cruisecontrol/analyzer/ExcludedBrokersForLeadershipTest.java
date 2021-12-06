@@ -118,7 +118,7 @@ public class ExcludedBrokersForLeadershipTest {
     // With single excluded broker, rack aware satisfiable cluster, no dead brokers (No exception, No proposal, Expected to look optimized)
     p.add(params(0, RackAwareGoal.class, excludeB1, null, DeterministicCluster.rackAwareSatisfiable(), noDeadBroker, true));
     // With single excluded broker, rack aware satisfiable cluster, one dead broker (No exception, No proposal, Expected to look optimized)
-    p.add(params(1, RackAwareGoal.class, excludeB1, null, DeterministicCluster.rackAwareSatisfiable(), deadBroker0, true));
+    p.add(params(1, RackAwareGoal.class, noExclusion, null, DeterministicCluster.rackAwareSatisfiable(), deadBroker0, true));
     // Without excluded broker, rack aware satisfiable cluster, no dead brokers (No exception, Proposal expected, Expected to look optimized)
     p.add(params(2, RackAwareGoal.class, noExclusion, null, DeterministicCluster.rackAwareSatisfiable(), noDeadBroker, true));
     // Without excluded broker, rack aware satisfiable cluster, one dead broker (No exception, Proposal expected, Expected to look optimized)
@@ -134,7 +134,7 @@ public class ExcludedBrokersForLeadershipTest {
     // With single excluded broker, rack aware satisfiable cluster, no dead brokers (No exception, No proposal, Expected to look optimized)
     p.add(params(0, RackAwareDistributionGoal.class, excludeB1, null, DeterministicCluster.rackAwareSatisfiable(), noDeadBroker, true));
     // With single excluded broker, rack aware satisfiable cluster, one dead broker (No exception, No proposal, Expected to look optimized)
-    p.add(params(1, RackAwareDistributionGoal.class, excludeB1, null, DeterministicCluster.rackAwareSatisfiable(), deadBroker0, true));
+    p.add(params(1, RackAwareDistributionGoal.class, noExclusion, null, DeterministicCluster.rackAwareSatisfiable(), deadBroker0, true));
     // Without excluded broker, rack aware satisfiable cluster, no dead brokers (No exception, Proposal expected, Expected to look optimized)
     p.add(params(2, RackAwareDistributionGoal.class, noExclusion, null, DeterministicCluster.rackAwareSatisfiable(), noDeadBroker, true));
     // Without excluded broker, rack aware satisfiable cluster, one dead broker (No exception, Proposal expected, Expected to look optimized)

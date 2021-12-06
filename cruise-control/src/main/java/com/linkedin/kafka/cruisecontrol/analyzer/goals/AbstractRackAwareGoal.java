@@ -9,22 +9,24 @@ import com.linkedin.kafka.cruisecontrol.analyzer.ActionType;
 import com.linkedin.kafka.cruisecontrol.analyzer.BalancingAction;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionRecommendation;
+import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionResponse;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionStatus;
 import com.linkedin.kafka.cruisecontrol.exception.OptimizationFailureException;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.Replica;
+import com.linkedin.kafka.cruisecontrol.model.ReplicaSortFunctionFactory;
+import com.linkedin.kafka.cruisecontrol.model.SortedReplicasHelper;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
-import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance.ACCEPT;
-import static com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance.REPLICA_REJECT;
 import static com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance.BROKER_REJECT;
+import static com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance.REPLICA_REJECT;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.MIN_NUM_VALID_WINDOWS_FOR_SELF_HEALING;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.replicaSortName;
 
@@ -35,9 +37,8 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.replicaS
 public abstract class AbstractRackAwareGoal extends AbstractGoal {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractRackAwareGoal.class);
 
-  private static final String FOLLOWERS_ONLY_CONFIG = "rack.aware.goal.followers.only";
-
-  private boolean _moveFollowersOnly = false;
+  private enum RebalancePhase { FOLLOWERS, LEADERS }
+  private RebalancePhase _rebalancePhase;
 
   @Override
   public ClusterModelStatsComparator clusterModelStatsComparator() {
@@ -60,10 +61,63 @@ public abstract class AbstractRackAwareGoal extends AbstractGoal {
   }
 
   @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-    _moveFollowersOnly = "true".equals(configs.get(FOLLOWERS_ONLY_CONFIG));
+  protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions) throws OptimizationFailureException {
+    // Filter out some replicas based on optimization options.
+    Set<String> excludedTopics = optimizationOptions.excludedTopics();
+    new SortedReplicasHelper().maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectImmigrants(),
+                    optimizationOptions.onlyMoveImmigrantReplicas())
+            .maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectReplicasBasedOnExcludedTopics(excludedTopics),
+                    !excludedTopics.isEmpty())
+            .trackSortedReplicasFor(replicaSortName(this, false, false), clusterModel);
+
+    _rebalancePhase = RebalancePhase.FOLLOWERS;
   }
+
+  /**
+   * Update goal state.
+   *
+   * If we're still in the {@code FOLLOWERS} {@link RebalancePhase}, advance the {@link RebalancePhase} to
+   * {@code LEADERS} and return immediately.
+   *
+   * Else, perform the following sanity checks:
+   *    - No self-healing eligible replica should remain on a dead broker/disk
+   *    - No replica should be moved to a broker which used to host any replica of the same partition on its broken disk
+   *    - Replicas of each partition are distributed across racks according to the requirements of the concrete class
+   *
+   * @param clusterModel The state of the cluster.
+   * @param optimizationOptions Options to take into account during optimization.
+   * @throws OptimizationFailureException If unable to satisfy this goal.
+   */
+  @Override
+  protected void updateGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions) throws OptimizationFailureException {
+    if (_rebalancePhase.equals(RebalancePhase.FOLLOWERS)) {
+      _rebalancePhase = RebalancePhase.LEADERS;
+      return;
+    }
+
+    // Sanity check: No self-healing eligible replica should remain at a dead broker/disk.
+    GoalUtils.ensureNoOfflineReplicas(clusterModel, name());
+    // Sanity check: No replica should be moved to a broker, which used to host any replica of the same partition on its broken disk.
+    GoalUtils.ensureReplicasMoveOffBrokersWithBadDisks(clusterModel, name());
+
+    ensureGoalAchievement(clusterModel, optimizationOptions);
+
+    if (_provisionResponse.status() != ProvisionStatus.OVER_PROVISIONED) {
+      _provisionResponse = new ProvisionResponse(ProvisionStatus.RIGHT_SIZED);
+    }
+
+    finish();
+  }
+
+  /**
+   * Check whether this goal has been achieved yet or not.
+   *
+   * @param clusterModel The state of the cluster.
+   * @param optimizationOptions Options to take into account during optimization.
+   * @throws OptimizationFailureException if goal has not been achieved.
+   */
+  protected abstract void ensureGoalAchievement(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
+          throws OptimizationFailureException;
 
   /**
    * Check whether the given action is acceptable by this goal. The following actions are acceptable:
@@ -139,7 +193,9 @@ public abstract class AbstractRackAwareGoal extends AbstractGoal {
       if (broker.isAlive() && !broker.currentOfflineReplicas().contains(replica) && shouldKeepInTheCurrentBroker(replica, clusterModel)) {
         continue;
       }
-      if (_moveFollowersOnly && replica.isLeader()) {
+      if (_rebalancePhase.equals(RebalancePhase.FOLLOWERS) && replica.isLeader()) {
+        continue;
+      } else if (_rebalancePhase.equals(RebalancePhase.LEADERS) && !replica.isLeader()) {
         continue;
       }
       // The relevant rack awareness condition is violated. Move replica to an eligible broker
