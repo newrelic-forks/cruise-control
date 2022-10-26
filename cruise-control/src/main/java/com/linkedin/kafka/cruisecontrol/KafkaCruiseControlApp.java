@@ -4,19 +4,25 @@
 
 package com.linkedin.kafka.cruisecontrol;
 
-import com.codahale.metrics.JmxReporter;
+import com.codahale.metrics.jmx.JmxReporter;
 import com.codahale.metrics.MetricRegistry;
 import com.linkedin.kafka.cruisecontrol.async.AsyncKafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
+import com.linkedin.kafka.cruisecontrol.metrics.LegacyObjectNameFactory;
 import com.linkedin.kafka.cruisecontrol.servlet.KafkaCruiseControlServlet;
 import com.linkedin.kafka.cruisecontrol.servlet.security.CruiseControlSecurityHandler;
 import com.linkedin.kafka.cruisecontrol.servlet.security.SecurityProvider;
+import org.apache.kafka.common.config.types.Password;
 import org.eclipse.jetty.security.ConstraintSecurityHandler;
 import org.eclipse.jetty.server.Connector;
-import org.eclipse.jetty.server.NCSARequestLog;
+import org.eclipse.jetty.server.CustomRequestLog;
+import org.eclipse.jetty.server.HttpConfiguration;
+import org.eclipse.jetty.server.HttpConnectionFactory;
+import org.eclipse.jetty.server.SecureRequestCustomizer;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.Slf4jRequestLogWriter;
 import org.eclipse.jetty.servlet.DefaultServlet;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHolder;
@@ -37,14 +43,17 @@ public class KafkaCruiseControlApp {
     this._config = config;
 
     MetricRegistry metricRegistry = new MetricRegistry();
-    _jmxReporter = JmxReporter.forRegistry(metricRegistry).inDomain(METRIC_DOMAIN).build();
+    _jmxReporter = JmxReporter.forRegistry(metricRegistry).inDomain(METRIC_DOMAIN)
+            .createsObjectNamesWith(LegacyObjectNameFactory.getInstance()).build();
     _jmxReporter.start();
 
     _kafkaCruiseControl = new AsyncKafkaCruiseControl(config, metricRegistry);
-
     _server = new Server();
-    NCSARequestLog requestLog = createRequestLog();
-    if (requestLog != null) {
+    if (_config.getBoolean(WebServerConfig.WEBSERVER_ACCESSLOG_ENABLED_CONFIG)) {
+      // setup access logger
+      Slf4jRequestLogWriter slf4jRequestLogWriter = new Slf4jRequestLogWriter();
+      slf4jRequestLogWriter.setLoggerName(KafkaCruiseControlUtils.REQUESTLOG_LOGGER);
+      CustomRequestLog requestLog = new CustomRequestLog(slf4jRequestLogWriter, CustomRequestLog.NCSA_FORMAT);
       _server.setRequestLog(requestLog);
     }
     _server.setConnectors(new Connector[]{ setupHttpConnector(hostname, port) });
@@ -104,20 +113,44 @@ public class KafkaCruiseControlApp {
       SslContextFactory sslServerContextFactory = new SslContextFactory.Server();
       sslServerContextFactory.setKeyStorePath(_config.getString(WebServerConfig.WEBSERVER_SSL_KEYSTORE_LOCATION_CONFIG));
       sslServerContextFactory.setKeyStorePassword(_config.getPassword(WebServerConfig.WEBSERVER_SSL_KEYSTORE_PASSWORD_CONFIG).value());
-      sslServerContextFactory.setKeyManagerPassword(_config.getPassword(WebServerConfig.WEBSERVER_SSL_KEY_PASSWORD_CONFIG).value());
+      Password sslKeyPassword = _config.getPassword(WebServerConfig.WEBSERVER_SSL_KEY_PASSWORD_CONFIG);
+      if (sslKeyPassword != null) {
+        sslServerContextFactory.setKeyManagerPassword(sslKeyPassword.value());
+      }
       sslServerContextFactory.setProtocol(_config.getString(WebServerConfig.WEBSERVER_SSL_PROTOCOL_CONFIG));
       String keyStoreType = _config.getString(WebServerConfig.WEBSERVER_SSL_KEYSTORE_TYPE_CONFIG);
       if (keyStoreType != null) {
         sslServerContextFactory.setKeyStoreType(keyStoreType);
       }
       maybeConfigureTlsProtocolsAndCiphers(sslServerContextFactory);
-      serverConnector = new ServerConnector(_server, sslServerContextFactory);
+
+      Boolean stsEnabled = _config.getBoolean(WebServerConfig.WEBSERVER_SSL_STS_ENABLED);
+      if (stsEnabled != null && stsEnabled) {
+        HttpConnectionFactory httpConnectionFactory = configureConnectionFactoryForHsts();
+        serverConnector = new ServerConnector(_server, sslServerContextFactory, httpConnectionFactory);
+      } else {
+        serverConnector = new ServerConnector(_server, sslServerContextFactory);
+      }
     } else {
       serverConnector = new ServerConnector(_server);
     }
     serverConnector.setHost(hostname);
     serverConnector.setPort(port);
     return serverConnector;
+  }
+
+  private HttpConnectionFactory configureConnectionFactoryForHsts() {
+    Long stsMaxAge = _config.getLong(WebServerConfig.WEBSERVER_SSL_STS_MAX_AGE);
+    Boolean stsIncludeSubDomains = _config.getBoolean(WebServerConfig.WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS);
+
+    SecureRequestCustomizer src = new SecureRequestCustomizer();
+    src.setStsMaxAge(stsMaxAge);
+    src.setStsIncludeSubDomains(stsIncludeSubDomains);
+
+    HttpConfiguration httpsConfig = new HttpConfiguration();
+    httpsConfig.addCustomizer(src);
+
+    return new HttpConnectionFactory(httpsConfig);
   }
 
   private void maybeConfigureTlsProtocolsAndCiphers(SslContextFactory sslContextFactory) {
@@ -150,23 +183,6 @@ public class KafkaCruiseControlApp {
     // holderWebapp.setInitParameter("org.eclipse.jetty.servlet.Default.dirAllowed", "false");
     holderWebapp.setInitParameter("resourceBase", webuiDir);
     contextHandler.addServlet(holderWebapp, webuiPathPrefix);
-  }
-
-  private NCSARequestLog createRequestLog() {
-    boolean accessLogEnabled = _config.getBoolean(WebServerConfig.WEBSERVER_ACCESSLOG_ENABLED_CONFIG);
-    if (accessLogEnabled) {
-      String accessLogPath = _config.getString(WebServerConfig.WEBSERVER_ACCESSLOG_PATH_CONFIG);
-      int accessLogRetention = _config.getInt(WebServerConfig.WEBSERVER_ACCESSLOG_RETENTION_DAYS_CONFIG);
-      NCSARequestLog requestLog = new NCSARequestLog(accessLogPath);
-      requestLog.setRetainDays(accessLogRetention);
-      requestLog.setLogLatency(true);
-      requestLog.setAppend(true);
-      requestLog.setExtended(false);
-      requestLog.setPreferProxiedForAddress(true);
-      return requestLog;
-    } else {
-      return null;
-    }
   }
 
   private ServletContextHandler createContextHandler() {

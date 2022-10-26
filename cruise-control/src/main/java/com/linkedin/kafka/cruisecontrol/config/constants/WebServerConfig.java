@@ -114,21 +114,6 @@ public final class WebServerConfig {
   public static final String WEBSERVER_ACCESSLOG_ENABLED_CONFIG = "webserver.accesslog.enabled";
   public static final boolean DEFAULT_WEBSERVER_ACCESSLOG_ENABLED = true;
   public static final String WEBSERVER_ACCESSLOG_ENABLED_DOC = "true if access log is enabled";
-
-  /**
-   * <code>webserver.accesslog.path</code>
-   */
-  public static final String WEBSERVER_ACCESSLOG_PATH_CONFIG = "webserver.accesslog.path";
-  public static final String DEFAULT_WEBSERVER_ACCESSLOG_PATH = "access.log";
-  public static final String WEBSERVER_ACCESSLOG_PATH_DOC = "HTTP Request log path";
-
-  /**
-   * <code>webserver.accesslog.retention.days</code>
-   */
-  public static final String WEBSERVER_ACCESSLOG_RETENTION_DAYS_CONFIG = "webserver.accesslog.retention.days";
-  public static final int DEFAULT_WEBSERVER_ACCESSLOG_RETENTION_DAYS = 7;
-  public static final String WEBSERVER_ACCESSLOG_RETENTION_DAYS_DOC = "HTTP Request log retention days";
-
   /**
    * <code>two.step.purgatory.retention.time.ms</code>
    */
@@ -252,6 +237,29 @@ public final class WebServerConfig {
   public static final String DEFAULT_WEBSERVER_SSL_EXCLUDE_PROTOCOLS = null;
   private static final String WEBSERVER_SSL_EXCLUDE_PROTOCOLS_DOC = "Sets the excluded protocols (list of patterns) for the webserver. "
       + "If not set, it does not change the system defaults.";
+
+  /**
+   * <code>webserver.ssl.sts.enabled</code>
+   */
+  public static final String WEBSERVER_SSL_STS_ENABLED = "webserver.ssl.sts.enabled";
+  public static final boolean DEFAULT_WEBSERVER_SSL_STS_ENABLED = false;
+  public static final String WEBSERVER_SSL_STS_ENABLED_DOC = "Enables the Strict Transport Security header in the web server responses.";
+
+  /**
+   * <code>webserver.ssl.sts.include.subdomains</code>
+   */
+  public static final String WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS = "webserver.ssl.sts.include.subdomains";
+  public static final boolean DEFAULT_WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS = true;
+  public static final String WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS_DOC = "Sets the includeSubDomains directive of the STS header. "
+    + "Only effective when webserver.ssl.sts.enabled is true.";
+
+  /**
+   * <code>webserver.ssl.sts.max.age</code>
+   */
+  public static final String WEBSERVER_SSL_STS_MAX_AGE = "webserver.ssl.sts.max.age";
+  public static final long DEFAULT_WEBSERVER_SSL_STS_MAX_AGE = 31536000L;
+  public static final String WEBSERVER_SSL_STS_MAX_AGE_DOC = "Sets the value of the max-age (in seconds) directive of the STS header. "
+      + "Only effective when webserver.ssl.sts.enabled is true.";
 
   /**
    * <code>jwt.authentication.provider.url</code>
@@ -417,17 +425,6 @@ public final class WebServerConfig {
                             DEFAULT_WEBSERVER_ACCESSLOG_ENABLED,
                             ConfigDef.Importance.MEDIUM,
                             WEBSERVER_ACCESSLOG_ENABLED_DOC)
-                    .define(WEBSERVER_ACCESSLOG_PATH_CONFIG,
-                            ConfigDef.Type.STRING,
-                            DEFAULT_WEBSERVER_ACCESSLOG_PATH,
-                            ConfigDef.Importance.LOW,
-                            WEBSERVER_ACCESSLOG_PATH_DOC)
-                    .define(WEBSERVER_ACCESSLOG_RETENTION_DAYS_CONFIG,
-                            ConfigDef.Type.INT,
-                            DEFAULT_WEBSERVER_ACCESSLOG_RETENTION_DAYS,
-                            atLeast(0),
-                            ConfigDef.Importance.LOW,
-                            WEBSERVER_ACCESSLOG_RETENTION_DAYS_DOC)
                     .define(TWO_STEP_PURGATORY_RETENTION_TIME_MS_CONFIG,
                             ConfigDef.Type.LONG,
                             DEFAULT_TWO_STEP_PURGATORY_RETENTION_TIME_MS,
@@ -511,6 +508,21 @@ public final class WebServerConfig {
                             DEFAULT_WEBSERVER_SSL_EXCLUDE_PROTOCOLS,
                             ConfigDef.Importance.MEDIUM,
                             WEBSERVER_SSL_EXCLUDE_PROTOCOLS_DOC)
+                    .define(WEBSERVER_SSL_STS_ENABLED,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_WEBSERVER_SSL_STS_ENABLED,
+                            ConfigDef.Importance.MEDIUM,
+                            WEBSERVER_SSL_STS_ENABLED_DOC)
+                    .define(WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS,
+                            ConfigDef.Importance.MEDIUM,
+                            WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS_DOC)
+                    .define(WEBSERVER_SSL_STS_MAX_AGE,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_WEBSERVER_SSL_STS_MAX_AGE,
+                            ConfigDef.Importance.MEDIUM,
+                            WEBSERVER_SSL_STS_MAX_AGE_DOC)
                     .define(JWT_AUTHENTICATION_PROVIDER_URL_CONFIG,
                             ConfigDef.Type.STRING,
                             DEFAULT_JWT_AUTHENTICATION_PROVIDER_URL,

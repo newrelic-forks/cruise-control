@@ -38,7 +38,7 @@ public class CruiseControlMetricsProcessor {
   private static final long INIT_METRIC_TIMESTAMP = -1L;
   private final Map<Integer, BrokerLoad> _brokerLoad;
   // TODO: Use the cached number of cores in estimation of partition CPU utilization.
-  private final Map<Integer, Short> _cachedNumCoresByBroker;
+  private final Map<Integer, Double> _cachedNumCoresByBroker;
   private final BrokerCapacityConfigResolver _brokerCapacityConfigResolver;
   private final boolean _allowCpuCapacityEstimation;
   private long _maxMetricTimestamp;
@@ -98,7 +98,7 @@ public class CruiseControlMetricsProcessor {
    * Package private for unit tests.
    * @return The cached number of cores by broker.
    */
-  Map<Integer, Short> cachedNumCoresByBroker() {
+  Map<Integer, Double> cachedNumCoresByBroker() {
     return _cachedNumCoresByBroker;
   }
 
@@ -149,7 +149,7 @@ public class CruiseControlMetricsProcessor {
       case ALL:
         LOG.info("Generated {}{} partition metric samples and {}{} broker metric samples for timestamp {}.",
                  partitionMetricSamples.size(),
-                 !skippedPartitionByBroker.isEmpty() ? String.format("(%s skipped by broker %s)",
+                 !skippedPartitionByBroker.isEmpty() ? String.format("(%d skipped by broker %s)",
                                                                      skippedPartitionByBroker.values()
                                                                                              .stream()
                                                                                              .mapToInt(v -> v)
@@ -159,7 +159,7 @@ public class CruiseControlMetricsProcessor {
         break;
       case PARTITION_METRICS_ONLY:
         LOG.info("Generated {}{} partition metric samples for timestamp {}.", partitionMetricSamples.size(),
-                 !skippedPartitionByBroker.isEmpty() ? String.format("(%s skipped by broker %s)",
+                 !skippedPartitionByBroker.isEmpty() ? String.format("(%d skipped by broker %s)",
                                                                      skippedPartitionByBroker.values()
                                                                                              .stream()
                                                                                              .mapToInt(v -> v)

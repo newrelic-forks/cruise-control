@@ -49,6 +49,7 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
 
   public KafkaCruiseControlConfig(Map<?, ?> originals, boolean doLog) {
     super(CONFIG, originals, doLog);
+    sanityCheckZK();
     sanityCheckGoalNames();
     sanityCheckSamplingPeriod(originals);
     sanityCheckConcurrency();
@@ -119,6 +120,30 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
       }
     }
     return objects;
+  }
+
+  /**
+   * Sanity check to ensure that {@link ExecutorConfig#ZOOKEEPER_CONNECT_CONFIG} is set if
+   * <ul>
+   *   <li>{@link AnomalyDetectorConfig#KAFKA_BROKER_FAILURE_DETECTION_ENABLE_CONFIG} is not enabled.</li>
+   *   <li>{@link MonitorConfig#TOPIC_CONFIG_PROVIDER_CLASS_CONFIG} is set to com.linkedin.kafka.cruisecontrol.config.KafkaTopicConfigProvider.</li>
+   * </ul>
+   */
+  private void sanityCheckZK() {
+    String zkConnect = getString(ExecutorConfig.ZOOKEEPER_CONNECT_CONFIG);
+    if (zkConnect == null || zkConnect.isEmpty()) {
+      if (!getBoolean(AnomalyDetectorConfig.KAFKA_BROKER_FAILURE_DETECTION_ENABLE_CONFIG)) {
+        throw new ConfigException(String.format("Missing required configuration, either %s must be set, or %s must be set to true.",
+                                                ExecutorConfig.ZOOKEEPER_CONNECT_CONFIG,
+                                                AnomalyDetectorConfig.KAFKA_BROKER_FAILURE_DETECTION_ENABLE_CONFIG));
+      }
+      if (KafkaTopicConfigProvider.class.getName().equals(getClass(MonitorConfig.TOPIC_CONFIG_PROVIDER_CLASS_CONFIG).getName())) {
+        throw new ConfigException(String.format("Missing required configuration, either %s must be set, or %s must be set to %s.",
+                                  ExecutorConfig.ZOOKEEPER_CONNECT_CONFIG,
+                                  MonitorConfig.TOPIC_CONFIG_PROVIDER_CLASS_CONFIG,
+                                  KafkaAdminTopicConfigProvider.class.getName()));
+      }
+    }
   }
 
   /**
@@ -199,6 +224,8 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
   /**
    * Sanity check to ensure that
    * <ul>
+   *   <li>{@link ExecutorConfig#MAX_NUM_CLUSTER_MOVEMENTS_CONFIG} >=
+   *     {@link ExecutorConfig#MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_CONFIG}</li>
    *   <li>{@link ExecutorConfig#MAX_NUM_CLUSTER_MOVEMENTS_CONFIG} >
    *     {@link ExecutorConfig#NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_CONFIG}</li>
    *   <li>{@link ExecutorConfig#MAX_NUM_CLUSTER_MOVEMENTS_CONFIG} >
@@ -222,27 +249,34 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
    * </ul>
    */
   void sanityCheckConcurrency() {
-    int maxClusterPartitionMovementConcurrency = getInt(ExecutorConfig.MAX_NUM_CLUSTER_MOVEMENTS_CONFIG);
+    int maxClusterMovementConcurrency = getInt(ExecutorConfig.MAX_NUM_CLUSTER_MOVEMENTS_CONFIG);
+    
+    int maxPartitionMovementsInCluster = getInt(ExecutorConfig.MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_CONFIG);
+    if (maxPartitionMovementsInCluster > maxClusterMovementConcurrency) {
+      throw new ConfigException(String.format("Maximum Inter-broker partition movement [%d] cannot be greater than the "
+                                              + "maximum number of allowed movements in cluster [%d].",
+                                              maxPartitionMovementsInCluster, maxClusterMovementConcurrency));
+    }
 
     int interBrokerPartitionMovementConcurrency = getInt(ExecutorConfig.NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_CONFIG);
-    if (interBrokerPartitionMovementConcurrency >= maxClusterPartitionMovementConcurrency) {
+    if (interBrokerPartitionMovementConcurrency >= maxClusterMovementConcurrency) {
       throw new ConfigException(String.format("Inter-broker partition movement concurrency [%d] must be smaller than the "
                                               + "maximum number of allowed movements in cluster [%d].",
-                                              interBrokerPartitionMovementConcurrency, maxClusterPartitionMovementConcurrency));
+                                              interBrokerPartitionMovementConcurrency, maxClusterMovementConcurrency));
     }
 
     int intraBrokerPartitionMovementConcurrency = getInt(ExecutorConfig.NUM_CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_CONFIG);
-    if (intraBrokerPartitionMovementConcurrency >= maxClusterPartitionMovementConcurrency) {
+    if (intraBrokerPartitionMovementConcurrency >= maxClusterMovementConcurrency) {
       throw new ConfigException(String.format("Intra-broker partition movement concurrency [%d] must be smaller than the "
                                               + "maximum number of allowed movements in cluster [%d].",
-                                              intraBrokerPartitionMovementConcurrency, maxClusterPartitionMovementConcurrency));
+                                              intraBrokerPartitionMovementConcurrency, maxClusterMovementConcurrency));
     }
 
     int leadershipMovementConcurrency = getInt(ExecutorConfig.NUM_CONCURRENT_LEADER_MOVEMENTS_CONFIG);
-    if (leadershipMovementConcurrency > maxClusterPartitionMovementConcurrency) {
+    if (leadershipMovementConcurrency > maxClusterMovementConcurrency) {
       throw new ConfigException(String.format("Leadership movement concurrency [%d] cannot be greater than the maximum number"
                                               + " of allowed movements in cluster [%d].",
-                                              leadershipMovementConcurrency, maxClusterPartitionMovementConcurrency));
+                                              leadershipMovementConcurrency, maxClusterMovementConcurrency));
     }
 
     int concurrencyAdjusterMaxPartitionMovementsPerBroker = getInt(ExecutorConfig.CONCURRENCY_ADJUSTER_MAX_PARTITION_MOVEMENTS_PER_BROKER_CONFIG);
@@ -252,10 +286,10 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
                                               interBrokerPartitionMovementConcurrency, concurrencyAdjusterMaxPartitionMovementsPerBroker));
     }
 
-    if (concurrencyAdjusterMaxPartitionMovementsPerBroker > maxClusterPartitionMovementConcurrency) {
+    if (concurrencyAdjusterMaxPartitionMovementsPerBroker > maxClusterMovementConcurrency) {
       throw new ConfigException(String.format("Maximum partition movements per broker of concurrency adjuster [%d] cannot"
                                               + " be greater than the maximum number of allowed movements in cluster [%d].",
-                                              concurrencyAdjusterMaxPartitionMovementsPerBroker, maxClusterPartitionMovementConcurrency));
+                                              concurrencyAdjusterMaxPartitionMovementsPerBroker, maxClusterMovementConcurrency));
     }
 
     int concurrencyAdjusterMinPartitionMovementsPerBroker = getInt(ExecutorConfig.CONCURRENCY_ADJUSTER_MIN_PARTITION_MOVEMENTS_PER_BROKER_CONFIG);
@@ -279,10 +313,10 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
                                               concurrencyAdjusterMaxLeadershipMovements));
     }
 
-    if (concurrencyAdjusterMaxLeadershipMovements > maxClusterPartitionMovementConcurrency) {
+    if (concurrencyAdjusterMaxLeadershipMovements > maxClusterMovementConcurrency) {
       throw new ConfigException(String.format("Maximum leadership movements of concurrency adjuster [%d] cannot be greater "
                                               + "than the maximum number of allowed movements in cluster [%d].",
-                                              concurrencyAdjusterMaxLeadershipMovements, maxClusterPartitionMovementConcurrency));
+                                              concurrencyAdjusterMaxLeadershipMovements, maxClusterMovementConcurrency));
     }
     long minExecutionProgressCheckIntervalMs = getLong(ExecutorConfig.MIN_EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG);
     long defaultExecutionProgressCheckIntervalMs = getLong(ExecutorConfig.EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG);
@@ -401,7 +435,7 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
                                               MonitorConfig.METRIC_SAMPLING_INTERVAL_MS_CONFIG));
     }
 
-    // Ensure sampling frequency is is higher than metric anomaly detection frequency.
+    // Ensure sampling frequency is higher than metric anomaly detection frequency.
     Long metricAnomalyDetectionIntervalMs = getLong(AnomalyDetectorConfig.METRIC_ANOMALY_DETECTION_INTERVAL_MS_CONFIG);
     if (metricAnomalyDetectionIntervalMs == null) {
       metricAnomalyDetectionIntervalMs = getLong(AnomalyDetectorConfig.ANOMALY_DETECTION_INTERVAL_MS_CONFIG);

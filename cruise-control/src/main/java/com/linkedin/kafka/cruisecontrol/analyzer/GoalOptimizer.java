@@ -8,6 +8,7 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.linkedin.kafka.cruisecontrol.common.Utils;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
+import com.linkedin.kafka.cruisecontrol.config.BrokerSetResolver;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.common.KafkaCruiseControlThreadFactory;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
@@ -100,7 +101,7 @@ public class GoalOptimizer implements Runnable {
                        MetricRegistry dropwizardMetricRegistry,
                        Executor executor,
                        AdminClient adminClient) {
-    _goalsByPriority = AnalyzerUtils.getGoalsByPriority(config);
+    _goalsByPriority = AnalyzerUtils.getDefaultGoalsByPriority(config);
     _defaultModelCompletenessRequirements = MonitorUtils.combineLoadRequirementOptions(_goalsByPriority);
     _requirementsWithAvailableValidWindows = new ModelCompletenessRequirements(
         1,
@@ -452,16 +453,16 @@ public class GoalOptimizer implements Runnable {
       statsByGoalPriority.put(goal, clusterModel.getClusterStats(_balancingConstraint, optimizationOptions));
       optimizationDurationByGoal.put(goal.name(), Duration.ofMillis(_time.milliseconds() - startTimeMs));
 
-      Set<ExecutionProposal> goalProposals = AnalyzerUtils.getDiff(preOptimizedReplicaDistribution,
-                                                                   preOptimizedLeaderDistribution,
-                                                                   clusterModel);
-      if (!goalProposals.isEmpty() || !succeeded) {
+      boolean hasDiff = AnalyzerUtils.hasDiff(preOptimizedReplicaDistribution, preOptimizedLeaderDistribution, clusterModel);
+      if (hasDiff || !succeeded) {
         violatedGoalNamesBeforeOptimization.add(goal.name());
       }
       if (!succeeded) {
         violatedGoalNamesAfterOptimization.add(goal.name());
       }
-      logProgress(isSelfHealing, goal.name(), optimizedGoals.size(), goalProposals);
+
+      LOG.debug("[{}/{}] Generated {} proposals for {}{}.", optimizedGoals.size(), _goalsByPriority.size(), hasDiff ? "some" : "no",
+                isSelfHealing ? "self-healing " : "", goal.name());
       step.done();
       if (LOG.isDebugEnabled()) {
         LOG.debug("Broker level stats after optimization: {}", clusterModel.brokerStats(null));
@@ -507,20 +508,11 @@ public class GoalOptimizer implements Runnable {
   }
 
   /**
-   * Log the progress of goal optimizer.
-   *
-   * @param isSelfHeal {@code true} if self-healing {@code false} otherwise.
-   * @param goalName Goal name.
-   * @param numOptimizedGoals Number of optimized goals.
-   * @param proposals Goal proposals.
+   * Get the broker set resolver
+   * @return the configured BrokerSetResolver instance
    */
-  private void logProgress(boolean isSelfHeal,
-                           String goalName,
-                           int numOptimizedGoals,
-                           Set<ExecutionProposal> proposals) {
-    LOG.debug("[{}/{}] Generated {} proposals for {}{}.", numOptimizedGoals, _goalsByPriority.size(), proposals.size(),
-              isSelfHeal ? "self-healing " : "", goalName);
-    LOG.trace("Proposals for {}{}.{}%n", isSelfHeal ? "self-healing " : "", goalName, proposals);
+  public BrokerSetResolver brokerSetResolver() {
+    return _balancingConstraint.brokerSetResolver();
   }
 
   private OptimizerResult updateCachedProposals(OptimizerResult result) {

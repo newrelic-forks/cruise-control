@@ -17,7 +17,6 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType;
 import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
-import com.linkedin.kafka.cruisecontrol.executor.strategy.BaseReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
@@ -98,6 +97,7 @@ public final class ParameterUtils {
   public static final String USE_READY_DEFAULT_GOALS_PARAM = "use_ready_default_goals";
   public static final String EXECUTION_PROGRESS_CHECK_INTERVAL_MS_PARAM = "execution_progress_check_interval_ms";
   public static final String CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_PARAM = "concurrent_partition_movements_per_broker";
+  public static final String MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM = "max_partition_movements_in_cluster";
   public static final String CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PARAM = "concurrent_intra_broker_partition_movements";
   public static final String CONCURRENT_LEADER_MOVEMENTS_PARAM = "concurrent_leader_movements";
   public static final String DEFAULT_PARTITION_LOAD_RESOURCE = "disk";
@@ -754,9 +754,7 @@ public final class ParameterUtils {
         throw new UserRequestException("Strategy " + strategyName + " is not supported. Supported: " + supportedStrategiesByName.keySet());
       }
     }
-    // Chain the generated composite strategy with BaseReplicaMovementStrategy in the end to ensure the returned strategy can always
-    // determine the order of two tasks.
-    return strategy.chain(new BaseReplicaMovementStrategy());
+    return strategy.chainBaseReplicaMovementStrategyIfAbsent();
   }
 
   static List<String> getGoals(HttpServletRequest request) throws UnsupportedEncodingException {
@@ -898,6 +896,24 @@ public final class ParameterUtils {
     }
 
     return concurrentMovementsPerBroker;
+  }
+
+  /**
+   * Get the max inter broker partition movements requirement dynamically set from the Http request.
+   *
+   * @param request The HTTP Request
+   * @return The execution upper bound requirement dynamically set from the Http request.
+   */
+  static Integer maxPartitionMovements(HttpServletRequest request) {
+    String parameterString = caseSensitiveParameterName(request.getParameterMap(), MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM);
+    if (parameterString == null) {
+      return null;
+    }
+    int maxPartitionMovements = Integer.parseInt(request.getParameter(parameterString));
+    if (maxPartitionMovements <= 0) {
+      throw new UserRequestException("The requested max partition movement must be positive (Requested: " + maxPartitionMovements + ").");
+    }
+    return maxPartitionMovements;
   }
 
   static Pattern excludedTopics(HttpServletRequest request) {

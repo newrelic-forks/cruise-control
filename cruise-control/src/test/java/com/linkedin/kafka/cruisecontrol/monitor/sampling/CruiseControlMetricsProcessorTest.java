@@ -47,7 +47,7 @@ import static org.junit.Assert.fail;
  * Unit test for CruiseControlMetricsProcessor
  */
 public class CruiseControlMetricsProcessorTest {
-  private static final short MOCK_NUM_CPU_CORES = 32;
+  private static final double MOCK_NUM_CPU_CORES = 32;
   private static final int BYTES_IN_KB = 1024;
   private static final int BYTES_IN_MB = 1024 * 1024;
   private static final int P0 = 0;
@@ -176,8 +176,9 @@ public class CruiseControlMetricsProcessorTest {
       processor.addMetric(metric);
     }
     processor.process(cluster, TEST_PARTITIONS, MetricSampler.SamplingMode.ALL);
-    assertEquals(MOCK_NUM_CPU_CORES, (short) processor.cachedNumCoresByBroker().get(BROKER_ID_0));
+    assertEquals(MOCK_NUM_CPU_CORES, (double) processor.cachedNumCoresByBroker().get(BROKER_ID_0), DELTA);
     assertNull(processor.cachedNumCoresByBroker().get(BROKER_ID_1));
+    EasyMock.verify(brokerCapacityConfigResolverTimeout, brokerCapacityConfigResolverSomeEstimated, brokerCapacityConfigResolverAllEstimated);
   }
 
   @Test
@@ -189,7 +190,7 @@ public class CruiseControlMetricsProcessorTest {
 
     MetricSampler.Samples samples = processor.process(cluster, TEST_PARTITIONS, MetricSampler.SamplingMode.ALL);
     for (Node node : cluster.nodes()) {
-      assertEquals(MOCK_NUM_CPU_CORES, (short) processor.cachedNumCoresByBroker().get(node.id()));
+      assertEquals(MOCK_NUM_CPU_CORES, (double) processor.cachedNumCoresByBroker().get(node.id()), DELTA);
     }
 
     assertEquals(4, samples.partitionMetricSamples().size());
@@ -328,9 +329,32 @@ public class CruiseControlMetricsProcessorTest {
     for (CruiseControlMetric cruiseControlMetric : metrics) {
       processor.addMetric(cruiseControlMetric);
     }
-
+    EasyMock.verify(brokerCapacityConfigResolver);
     Cluster cluster = getCluster();
     processor.process(cluster, TEST_PARTITIONS, MetricSampler.SamplingMode.ALL);
+  }
+
+  @Test
+  public void testEstimatedCPUUtilProduceOnly() {
+    // In a produce only case there will not be any client bytes out since there is no consumer running.
+    // Also, ReplicationBytes at Topic level are not present yet.
+    double allTopicBytesIn = 1000.0;
+    // No consumer running
+    double allTopicBytesOut = 0.0;
+    double partitionBytesIn = 1000.0;
+    // No consumer running
+    double partitionBytesOut = 0.0;
+    // Replication bytes metrics unavailable at topic-partition level
+    double partitionReplicationBytesOut = 0.0;
+    double allTopicReplicationBytesIn = 2000.0;
+    double allTopicReplicationBytesOut = 2000.0;
+    double estimatedCpuUtilPerCore = estimateLeaderCpuUtilPerCore(B0_CPU,
+                                                                  allTopicBytesIn,
+                                                                  allTopicBytesOut,
+                                                                  allTopicReplicationBytesIn,
+                                                                  partitionBytesIn,
+                                                                  partitionBytesOut + partitionReplicationBytesOut);
+    assertEquals(35.0, estimatedCpuUtilPerCore, 0.01);
   }
 
   /**

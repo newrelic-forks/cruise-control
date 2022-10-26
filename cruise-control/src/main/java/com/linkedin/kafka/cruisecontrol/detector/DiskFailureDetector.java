@@ -7,6 +7,7 @@ package com.linkedin.kafka.cruisecontrol.detector;
 import com.linkedin.cruisecontrol.detector.Anomaly;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.monitor.ModelGeneration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Queue;
@@ -35,13 +36,13 @@ public class DiskFailureDetector extends AbstractAnomalyDetector implements Runn
   private static final Logger LOG = LoggerFactory.getLogger(DiskFailureDetector.class);
   public static final String FAILED_DISKS_OBJECT_CONFIG = "failed.disks.object";
   private final AdminClient _adminClient;
-  private int _lastCheckedClusterGeneration;
+  private ModelGeneration _lastCheckedModelGeneration;
   private final KafkaCruiseControlConfig _config;
 
   public DiskFailureDetector(Queue<Anomaly> anomalies, KafkaCruiseControl kafkaCruiseControl) {
     super(anomalies, kafkaCruiseControl);
     _adminClient = kafkaCruiseControl.adminClient();
-    _lastCheckedClusterGeneration = -1;
+    _lastCheckedModelGeneration = new ModelGeneration(0, -1L);
     _config = _kafkaCruiseControl.config();
   }
 
@@ -52,7 +53,8 @@ public class DiskFailureDetector extends AbstractAnomalyDetector implements Runn
    * Skip disk failure detection if any of the following is satisfied:
    * <ul>
    *   <li>Cluster model generation has not changed since the last disk failure check.</li>
-   *   <li>There are dead brokers in the cluster, {@link BrokerFailureDetector} should take care of the anomaly.</li>
+   *   <li>There are dead brokers in the cluster, {@link ZKBrokerFailureDetector} or
+   *   {@link KafkaBrokerFailureDetector} should take care of the anomaly.</li>
    *   <li>{@link AnomalyDetectorUtils#getAnomalyDetectionStatus(KafkaCruiseControl, boolean, boolean)} is not {@link AnomalyDetectionStatus#READY}.
    *   <li>See {@link AnomalyDetectionStatus} for details.</li>
    * </ul>
@@ -60,15 +62,15 @@ public class DiskFailureDetector extends AbstractAnomalyDetector implements Runn
    * @return The {@link AnomalyDetectionStatus anomaly detection status}, indicating whether the anomaly detector is ready.
    */
   private AnomalyDetectionStatus getDiskFailureDetectionStatus() {
-    int currentClusterGeneration = _kafkaCruiseControl.loadMonitor().clusterModelGeneration().clusterGeneration();
-    if (currentClusterGeneration == _lastCheckedClusterGeneration) {
+    ModelGeneration currentClusterModelGeneration = _kafkaCruiseControl.loadMonitor().clusterModelGeneration();
+    if (currentClusterModelGeneration.equals(_lastCheckedModelGeneration)) {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Skipping disk failure detection because the model generation hasn't changed. Current model generation {}",
                   _kafkaCruiseControl.loadMonitor().clusterModelGeneration());
       }
       return AnomalyDetectionStatus.SKIP_MODEL_GENERATION_NOT_CHANGED;
     }
-    _lastCheckedClusterGeneration = currentClusterGeneration;
+    _lastCheckedModelGeneration = currentClusterModelGeneration;
 
     Set<Integer> deadBrokers = _kafkaCruiseControl.loadMonitor().deadBrokersWithReplicas(MAX_METADATA_WAIT_MS);
     if (!deadBrokers.isEmpty()) {

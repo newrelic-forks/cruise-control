@@ -12,6 +12,9 @@ import java.util.SortedSet;
 import org.apache.kafka.common.Cluster;
 
 
+/**
+ * An interface to enable customization of replica movement strategies.
+ */
 public interface ReplicaMovementStrategy {
 
   /**
@@ -42,6 +45,14 @@ public interface ReplicaMovementStrategy {
    * @return The composite replica movement strategy.
    */
   ReplicaMovementStrategy chain(ReplicaMovementStrategy strategy);
+
+  /**
+   * Unless the custom strategies are already chained with {@link BaseReplicaMovementStrategy},
+   * chain the generated composite strategy with {@link BaseReplicaMovementStrategy} in the end to ensure the returned strategy can always
+   * determine the order of two tasks.
+   * @return The replica movement strategy which is guaranteed to have {@link BaseReplicaMovementStrategy}.
+   */
+  ReplicaMovementStrategy chainBaseReplicaMovementStrategyIfAbsent();
 
   /**
    * Generate a comparator for replica movement task which incorporate the strategy to apply. The "smaller" task will have

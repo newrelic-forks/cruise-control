@@ -1,5 +1,6 @@
 TopicConfigurationEndpoint:
   post:
+    operationId: topicConfiguration
     summary: Change the configuration of a topic
     parameters:
       - name: dryrun
@@ -46,6 +47,13 @@ TopicConfigurationEndpoint:
       - name: concurrent_partition_movements_per_broker
         in: query
         description: The upper bound of ongoing replica movements going into/out of each broker.
+        schema:
+          type: integer
+          format: int32
+          minimum: 1
+      - name: max_partition_movements_in_cluster
+        in: query
+        description: Change upper bound of ongoing inter broker partition movements in cluster.
         schema:
           type: integer
           format: int32

@@ -29,8 +29,8 @@ import org.junit.Test;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC_REPLICATION_FACTOR_ANOMALY_ENTRY;
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.KAFKA_CRUISE_CONTROL_OBJECT_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.ANOMALY_DETECTION_TIME_MS_OBJECT_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.detector.BrokerFailureDetector.BROKER_FAILURES_FIXABLE_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.detector.BrokerFailureDetector.FAILED_BROKERS_OBJECT_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.detector.AbstractBrokerFailureDetector.BROKER_FAILURES_FIXABLE_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.detector.AbstractBrokerFailureDetector.FAILED_BROKERS_OBJECT_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.detector.DiskFailureDetector.FAILED_DISKS_OBJECT_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.detector.MetricAnomalyDetector.METRIC_ANOMALY_BROKER_ENTITIES_OBJECT_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.detector.MetricAnomalyDetector.METRIC_ANOMALY_FIXABLE_OBJECT_CONFIG;
@@ -127,6 +127,8 @@ public class SelfHealingNotifierTest {
     assertFalse(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.METRIC_ANOMALY));
     assertFalse(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.DISK_FAILURE));
     assertFalse(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.TOPIC_ANOMALY));
+
+    EasyMock.verify(mockKafkaCruiseControl);
   }
 
   @Test
@@ -215,6 +217,7 @@ public class SelfHealingNotifierTest {
     assertEquals(AnomalyNotificationResult.Action.IGNORE, result.action());
     assertTrue(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.TOPIC_ANOMALY));
     assertFalse(anomalyNotifier.isAutoFixTriggeredFor(KafkaAnomalyType.TOPIC_ANOMALY));
+    EasyMock.verify(mockKafkaCruiseControl);
   }
 
   private static class TestingBrokerFailureAutoFixNotifier extends SelfHealingNotifier {

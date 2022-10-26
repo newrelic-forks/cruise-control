@@ -9,6 +9,7 @@ import com.linkedin.kafka.cruisecontrol.executor.strategy.BaseReplicaMovementStr
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PostponeUrpReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeLargeReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeMinIsrWithOfflineReplicasStrategy;
+import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeOneAboveMinIsrWithOfflineReplicasStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeSmallReplicaMovementStrategy;
 import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +30,7 @@ public final class ExecutorConfig {
    * <code>zookeeper.connect</code>
    */
   public static final String ZOOKEEPER_CONNECT_CONFIG = KafkaConfig.ZkConnectProp();
+  public static final String DEFAULT_ZOOKEEPER_CONNECT = null;
   public static final String ZOOKEEPER_CONNECT_DOC = KafkaConfig.ZkConnectDoc();
 
   /**
@@ -177,6 +179,17 @@ public final class ExecutorConfig {
       + " is smaller than the default zNode size limit.";
 
   /**
+   * <code>max.num.cluster.partition.movements</code>
+   */
+  public static final String MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_CONFIG = "max.num.cluster.partition.movements";
+  // Keeping smaller than allowed cluster movements
+  public static final int DEFAULT_MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_CONFIG = 1250;
+  public static final String MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_DOC = "The maximum number of allowed partition movements in the cluster."
+      + " This global limit cannot be exceeded regardless of the per-broker replica movement "
+      + "concurrency. While max.num.cluster.movements corresponds to the default zNode size limit, "
+      + "max.num.cluster.partition.movements throttles the maximum partition movements across the cluster";
+
+  /**
    * <code>default.replication.throttle</code>
    */
   public static final String DEFAULT_REPLICATION_THROTTLE_CONFIG = "default.replication.throttle";
@@ -193,6 +206,7 @@ public final class ExecutorConfig {
       .add(PrioritizeLargeReplicaMovementStrategy.class.getName())
       .add(PrioritizeSmallReplicaMovementStrategy.class.getName())
       .add(PrioritizeMinIsrWithOfflineReplicasStrategy.class.getName())
+      .add(PrioritizeOneAboveMinIsrWithOfflineReplicasStrategy.class.getName())
       .add(BaseReplicaMovementStrategy.class.getName()).toString();
   public static final String REPLICA_MOVEMENT_STRATEGIES_DOC = "A list of supported strategies used to determine execution"
       + " order for generated partition movement tasks.";
@@ -348,21 +362,6 @@ public final class ExecutorConfig {
   public static final String CONCURRENCY_ADJUSTER_MIN_LEADERSHIP_MOVEMENTS_DOC = "The minimum number of leadership movements "
       + "the concurrency auto adjustment will allow the executor to perform in one batch to avoid an unacceptable execution pace."
       + " It cannot be greater than num.concurrent.leader.movements.";
-
-  /**
-   * <code>concurrency.adjuster.enabled</code>
-   * @deprecated This config will be removed in a future release. Please enable concurrency adjusters individually using:
-   * <ul>
-   *   <li>{@link #CONCURRENCY_ADJUSTER_INTER_BROKER_REPLICA_ENABLED_CONFIG}</li>
-   *   <li>{@link #CONCURRENCY_ADJUSTER_LEADERSHIP_ENABLED_CONFIG}</li>
-   * </ul>
-   */
-  @Deprecated
-  public static final String CONCURRENCY_ADJUSTER_ENABLED_CONFIG = "concurrency.adjuster.enabled";
-  public static final boolean DEFAULT_CONCURRENCY_ADJUSTER_ENABLED = false;
-  public static final String CONCURRENCY_ADJUSTER_ENABLED_DOC = "The flag to indicate whether the concurrency of "
-      + "all supported movements will be auto-adjusted based on dynamically changing broker metrics. It enables concurrency adjuster "
-      + "for all supported concurrency types, regardless of whether the particular concurrency type is disabled.";
 
   /**
    * <code>concurrency.adjuster.inter.broker.replica.enabled</code>
@@ -534,6 +533,14 @@ public final class ExecutorConfig {
   public static final String CONCURRENCY_ADJUSTER_MIN_ISR_RETENTION_MS_DOC = "The maximum time in ms to cache min.insync.replicas of topics."
       + " Relevant only if concurrency adjuster is enabled based on (At/Under)MinISR status of partitions.";
 
+  /**
+   * <code>auto.stop.external.agent</code>
+   */
+  public static final String AUTO_STOP_EXTERNAL_AGENT_CONFIG = "auto.stop.external.agent";
+  public static final boolean DEFAULT_AUTO_STOP_EXTERNAL_AGENT = true;
+  public static final String AUTO_STOP_EXTERNAL_AGENT_DOC = "When starting a new proposal execution while external agent is reassigning partitions,"
+      + " automatically stop the external agent and start the execution."
+      + " Set to false to keep the external agent reassignment and skip starting the execution.";
   private ExecutorConfig() {
   }
 
@@ -546,6 +553,7 @@ public final class ExecutorConfig {
   public static ConfigDef define(ConfigDef configDef) {
     return configDef.define(ZOOKEEPER_CONNECT_CONFIG,
                             ConfigDef.Type.STRING,
+                            DEFAULT_ZOOKEEPER_CONNECT,
                             ConfigDef.Importance.HIGH,
                             ZOOKEEPER_CONNECT_DOC)
                     .define(ZOOKEEPER_SECURITY_ENABLED_CONFIG,
@@ -647,6 +655,12 @@ public final class ExecutorConfig {
                             atLeast(5),
                             ConfigDef.Importance.MEDIUM,
                             MAX_NUM_CLUSTER_MOVEMENTS_DOC)
+                    .define(MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_CONFIG,
+                            ConfigDef.Type.INT,
+                            DEFAULT_MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_CONFIG,
+                            atLeast(1),
+                            ConfigDef.Importance.MEDIUM,
+                            MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_DOC)
                     .define(DEFAULT_REPLICATION_THROTTLE_CONFIG,
                             ConfigDef.Type.LONG,
                             DEFAULT_DEFAULT_REPLICATION_THROTTLE,
@@ -751,11 +765,6 @@ public final class ExecutorConfig {
                             atLeast(1),
                             ConfigDef.Importance.LOW,
                             CONCURRENCY_ADJUSTER_MIN_LEADERSHIP_MOVEMENTS_DOC)
-                    .define(CONCURRENCY_ADJUSTER_ENABLED_CONFIG,
-                            ConfigDef.Type.BOOLEAN,
-                            DEFAULT_CONCURRENCY_ADJUSTER_ENABLED,
-                            ConfigDef.Importance.HIGH,
-                            CONCURRENCY_ADJUSTER_ENABLED_DOC)
                     .define(CONCURRENCY_ADJUSTER_INTER_BROKER_REPLICA_ENABLED_CONFIG,
                             ConfigDef.Type.BOOLEAN,
                             DEFAULT_CONCURRENCY_ADJUSTER_INTER_BROKER_REPLICA_ENABLED,
@@ -866,6 +875,11 @@ public final class ExecutorConfig {
                             DEFAULT_CONCURRENCY_ADJUSTER_MIN_ISR_RETENTION_MS,
                             atLeast(1),
                             ConfigDef.Importance.LOW,
-                            CONCURRENCY_ADJUSTER_MIN_ISR_RETENTION_MS_DOC);
+                            CONCURRENCY_ADJUSTER_MIN_ISR_RETENTION_MS_DOC)
+                    .define(AUTO_STOP_EXTERNAL_AGENT_CONFIG,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_AUTO_STOP_EXTERNAL_AGENT,
+                            ConfigDef.Importance.MEDIUM,
+                            AUTO_STOP_EXTERNAL_AGENT_DOC);
   }
 }

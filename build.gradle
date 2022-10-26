@@ -7,9 +7,10 @@ plugins {
   id "com.jfrog.artifactory"
   id "idea"
   id "jacoco" // Java Code Coverage plugin
-  id "com.github.ben-manes.versions" version "0.39.0"
-  id "com.github.spotbugs" version "4.7.6" apply false
+  id "com.github.ben-manes.versions" version "0.42.0"
+  id "com.github.spotbugs" version "5.0.9" apply false
   id "checkstyle"
+  id 'us.datanerd.application' version "7.2.0"
 }
 
 group = 'com.linkedin.cruisecontrol'
@@ -53,6 +54,7 @@ allprojects {
   }
 
   apply plugin: 'com.github.ben-manes.versions'
+  apply plugin: 'us.datanerd.application'
 
   dependencyUpdates {
     revision="release"
@@ -97,13 +99,13 @@ subprojects {
 
   //code quality and inspections
   checkstyle {
-    toolVersion = '9.0'
+    toolVersion = '10.0'
     ignoreFailures = false
     configDirectory = file("$rootDir/checkstyle")
   }
 
   spotbugs {
-    toolVersion = '4.4.1'
+    toolVersion = '4.7.1'
     excludeFilter = file("$rootDir/gradle/findbugs-exclude.xml")
     ignoreFailures = false
     jvmArgs = [ '-Xms512m' ]
@@ -144,15 +146,29 @@ subprojects {
     if (!project.hasProperty("maxParallelForks")) {
       maxParallelForks = Runtime.runtime.availableProcessors()
     }
+    finalizedBy jacocoTestReport
+  }
+
+  jacocoTestReport {
+    reports {
+      xml.required = false
+      csv.required = false
+      html.outputLocation = layout.buildDirectory.dir('jacocoHtml')
+    }
   }
 }
 
 project(':cruise-control-core') {
   apply plugin: 'maven-publish'
   apply plugin: 'com.jfrog.artifactory'
+  apply plugin: 'us.datanerd.application'
 
   configurations {
     testOutput
+  }
+
+  application {
+    usingConscrypt = true
   }
 
   dependencies {
@@ -160,14 +176,14 @@ project(':cruise-control-core') {
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
       exclude group: 'log4j', module: 'log4j'
     }
-    api "org.slf4j:slf4j-api:1.7.32"
-    api "org.apache.logging.log4j:log4j-slf4j-impl:2.14.1"
-    api 'org.apache.commons:commons-math3:3.6.1'
+    implementation "org.slf4j:slf4j-api:1.7.36"
+    implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.17.2"
+    implementation 'org.apache.commons:commons-math3:3.6.1'
     api "org.eclipse.jetty:jetty-servlet:${jettyVersion}"
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
 
     testImplementation 'junit:junit:4.13.2'
 
-    implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
     testOutput sourceSets.test.output
   }
 
@@ -210,6 +226,11 @@ project(':cruise-control') {
   apply plugin: 'scala'
   apply plugin: 'maven-publish'
   apply plugin: 'com.jfrog.artifactory'
+  apply plugin: 'us.datanerd.application'
+
+  application {
+    usingConscrypt = true
+  }
 
   //needed because our java classes depend on scala classes, so must be compiled by scala
   sourceSets {
@@ -232,32 +253,53 @@ project(':cruise-control') {
       }
     }
 
+    integrationTest {
+      java {
+        srcDirs = ["src/integrationTest/java"]
+      }
+      resources {
+        srcDirs = ['src/integrationTest/resources']
+      }
+      compileClasspath += main.output + test.output
+      runtimeClasspath += main.output + test.output
+    }
+
   }
+
+  configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntime.extendsFrom testRuntime
+   }
 
   dependencies {
     configurations.all {
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
       exclude group: 'log4j', module: 'log4j'
     }
+
     api project(':cruise-control-metrics-reporter')
     api project(':cruise-control-core')
-    api "org.slf4j:slf4j-api:1.7.32"
-    api "org.apache.logging.log4j:log4j-slf4j-impl:2.14.1"
-    api "org.apache.zookeeper:zookeeper:${zookeeperVersion}"
-    api "io.netty:netty-handler:${nettyVersion}"
-    api "io.netty:netty-transport-native-epoll:${nettyVersion}"
+    implementation "org.slf4j:slf4j-api:1.7.36"
+    implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.17.2"
+    implementation "org.apache.zookeeper:zookeeper:${zookeeperVersion}"
+    implementation "io.netty:netty-handler:${nettyVersion}"
+    implementation "io.netty:netty-transport-native-epoll:${nettyVersion}"
     api "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
     api "org.apache.kafka:kafka-clients:$kafkaVersion"
-    api "org.scala-lang:scala-library:$scalaVersion"
-    api 'org.apache.commons:commons-math3:3.6.1'
-    api 'org.apache.httpcomponents:httpclient:4.5.13'
-    api 'commons-codec:commons-codec:1.15'
-    api 'com.google.code.gson:gson:2.8.8'
-    api "org.eclipse.jetty:jetty-server:${jettyVersion}"
-    api 'io.dropwizard.metrics:metrics-core:3.2.6'
-    api 'com.nimbusds:nimbus-jose-jwt:9.15.2'
-    api 'io.swagger.parser.v3:swagger-parser-v3:2.0.28'
-    api 'io.github.classgraph:classgraph:4.8.117'
+    implementation "org.scala-lang:scala-library:$scalaVersion"
+    implementation 'org.apache.commons:commons-math3:3.6.1'
+    implementation 'org.apache.httpcomponents:httpclient:4.5.13'
+    implementation 'commons-codec:commons-codec:1.15'
+    implementation 'com.google.code.gson:gson:2.9.0'
+    implementation "org.eclipse.jetty:jetty-server:${jettyVersion}"
+    implementation 'io.dropwizard.metrics:metrics-jmx:4.2.9'
+    implementation 'com.nimbusds:nimbus-jose-jwt:9.21'
+    implementation 'io.swagger.parser.v3:swagger-parser-v3:2.0.30'
+    implementation 'io.github.classgraph:classgraph:4.8.141'
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    implementation 'com.google.guava:guava:31.1-jre'
+    // Temporary pin for vulnerability
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.4.2'
 
     testImplementation project(path: ':cruise-control-metrics-reporter', configuration: 'testOutput')
     testImplementation project(path: ':cruise-control-core', configuration: 'testOutput')
@@ -268,11 +310,11 @@ project(':cruise-control') {
     testImplementation "org.apache.kafka:kafka-clients:$kafkaVersion:test"
     testImplementation 'commons-io:commons-io:2.11.0'
     testImplementation 'org.apache.httpcomponents:httpclient:4.5.13:tests'
-    testImplementation 'org.bouncycastle:bcpkix-jdk15on:1.69'
+    testImplementation 'org.bouncycastle:bcpkix-jdk15on:1.70'
     testImplementation 'org.apache.kerby:kerb-simplekdc:2.0.1'
-
-    implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
-
+    testImplementation 'com.jayway.jsonpath:json-path:2.7.0'
+    testImplementation 'org.powermock:powermock-module-junit4:2.0.9'
+    testImplementation 'org.powermock:powermock-api-easymock:2.0.9'
   }
 
   publishing {
@@ -305,9 +347,10 @@ project(':cruise-control') {
     duplicatesStrategy 'exclude'
   }
 
-  tasks.create(name: "buildFatJar", type: Jar) {
+  tasks.create(name: "buildFatJar", type: Jar, dependsOn: ["createVersionFile", ":cruise-control-metrics-reporter:jar", ":cruise-control-core:jar"]) {
     archiveBaseName = project.name + '-all'
-    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
     with jar
   }
 
@@ -349,6 +392,17 @@ project(':cruise-control') {
     }
   }
 
+  task integrationTest(type: Test) {
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    testLogging {
+      events "passed", "failed", "skipped"
+      exceptionFormat = 'full'
+    }
+  }
+
+  compileIntegrationTestJava.dependsOn copyDependantLibs
+
   jar {
     dependsOn createVersionFile
     from("$buildDir") {
@@ -360,9 +414,14 @@ project(':cruise-control') {
 project(':cruise-control-metrics-reporter') {
   apply plugin: 'maven-publish'
   apply plugin: 'com.jfrog.artifactory'
+  apply plugin: 'us.datanerd.application'
 
   configurations {
     testOutput
+  }
+
+  application {
+    usingConscrypt = true
   }
 
   dependencies {
@@ -370,21 +429,25 @@ project(':cruise-control-metrics-reporter') {
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
       exclude group: 'log4j', module: 'log4j'
     }
-    api "org.slf4j:slf4j-api:1.7.32"
-    api "org.apache.logging.log4j:log4j-slf4j-impl:2.14.1"
-    api "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
-    api "org.apache.kafka:kafka-clients:$kafkaVersion"
+
+    implementation "org.slf4j:slf4j-api:1.7.36"
+    implementation "com.yammer.metrics:metrics-core:2.2.0"
+    implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.17.2"
+    implementation "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
+    implementation "org.apache.kafka:kafka-clients:$kafkaVersion"
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    // Temporary pin for vulnerability
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.4.2'
 
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.bouncycastle:bcpkix-jdk15on:1.69'
+    testImplementation 'org.bouncycastle:bcpkix-jdk15on:1.70'
     testImplementation 'org.powermock:powermock-module-junit4:2.0.9'
     testImplementation 'org.powermock:powermock-api-easymock:2.0.9'
     testImplementation "org.apache.kafka:kafka-clients:$kafkaVersion:test"
     testImplementation "org.apache.kafka:kafka-clients:$kafkaVersion"
     testImplementation 'commons-io:commons-io:2.11.0'
+    testImplementation "org.apache.zookeeper:zookeeper:${zookeeperVersion}"
     testOutput sourceSets.test.output
-
-    implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.2'
   }
 
   publishing {
@@ -443,6 +506,6 @@ static def getScalaBinaryVersion(versionStr) {
 
 //wrapper generation task
 wrapper {
-  gradleVersion = '7.2'
+  gradleVersion = '7.4'
   distributionType = Wrapper.DistributionType.ALL
 }
