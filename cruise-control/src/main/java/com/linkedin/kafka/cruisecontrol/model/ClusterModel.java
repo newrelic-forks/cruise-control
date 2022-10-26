@@ -35,8 +35,6 @@ import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUtils.EMPTY_BROKER_CAPACITY;
 
@@ -46,7 +44,6 @@ import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUtils.EMPTY_BROKER
  * the input of the analyzer to generate the proposals for load rebalance.
  */
 public class ClusterModel implements Serializable {
-  private static final Logger LOG = LoggerFactory.getLogger(ClusterModel.class);
   private static final long serialVersionUID = -6840253566423285966L;
   // Hypothetical broker that indicates the original broker of replicas to be created in the existing cluster model.
   private static final Broker GENESIS_BROKER = new Broker(null, -1, new BrokerCapacityInfo(EMPTY_BROKER_CAPACITY), false);
@@ -75,6 +72,8 @@ public class ClusterModel implements Serializable {
   private final Map<Integer, Load> _potentialLeadershipLoadByBrokerId;
   private int _unknownHostId;
   private final Map<Integer, String> _capacityEstimationInfoByBrokerId;
+  private final Map<String, Map<Broker, Integer>> _numLeadReplicasByTopicByBroker;
+  private final Map<String, Map<Rack, Integer>> _numLeadReplicasByTopicByRack;
 
   /**
    * Constructor for the cluster class. It creates data structures to hold a list of racks, a map for partitions by
@@ -111,6 +110,8 @@ public class ClusterModel implements Serializable {
     _monitoredPartitionsRatio = monitoredPartitionsRatio;
     _unknownHostId = 0;
     _capacityEstimationInfoByBrokerId = new HashMap<>();
+    _numLeadReplicasByTopicByBroker = new HashMap<>();
+    _numLeadReplicasByTopicByRack = new HashMap<>();
   }
 
   /**
@@ -393,6 +394,11 @@ public class ClusterModel implements Serializable {
     _load.addLoad(replica.load());
     // Add leadership load to the destination replica.
     _potentialLeadershipLoadByBrokerId.get(destinationBrokerId).addLoad(partition(tp).leader().load());
+
+    // Increment leadership counts if applicable
+    if (replica.isLeader()) {
+      incrementLeadReplicaCount(tp, destinationBrokerId);
+    }
   }
 
   /**
@@ -436,6 +442,10 @@ public class ClusterModel implements Serializable {
     // Update the leader and list of followers of the partition.
     Partition partition = _partitionsByTopicPartition.get(tp);
     partition.relocateLeadership(destinationReplica);
+
+    // Update leadership counts
+    decrementLeadReplicaCount(tp, sourceBrokerId);
+    incrementLeadReplicaCount(tp, destinationBrokerId);
 
     return true;
   }
@@ -552,6 +562,10 @@ public class ClusterModel implements Serializable {
         _numReplicasByTopic.merge(tp.topic(), -1, Integer::sum);
         if (_numReplicasByTopic.get(tp.topic()) == 0) {
           _numReplicasByTopic.remove(tp.topic());
+        }
+        // Decrement leadership counts if applicable
+        if (removedReplica.isLeader()) {
+          decrementLeadReplicaCount(tp, brokerId);
         }
         // Remove the load of the removed replica from the recent load of the cluster.
         _load.subtractLoad(removedReplica.load());
@@ -871,6 +885,7 @@ public class ClusterModel implements Serializable {
     Partition partition = _partitionsByTopicPartition.get(tp);
     if (replica.isLeader()) {
       partition.addLeader(replica, index);
+      incrementLeadReplicaCount(tp, brokerId);
       return replica;
     }
 
@@ -984,19 +999,9 @@ public class ClusterModel implements Serializable {
         int[] cursors = new int[racks.size()];
         int rackCursor = 0;
         for (PartitionInfo partitionInfo : cluster.partitionsForTopic(topic)) {
-
           if (partitionInfo.replicas().length == replicationFactor) {
             continue;
           }
-
-          TopicPartition tp = new TopicPartition(topic, partitionInfo.partition());
-          Partition partition = partition(tp);
-          if (!ModelUtils.hasSameReplicasFor(partition, partitionInfo)) {
-            LOG.warn("Detected partition info inconsistent with clusterModel: PartitionInfo: {}, Partition in ClusterModel: {}. "
-                     + " Skip creating or deleting replicas for this partition.", partitionInfo, partition);
-            continue;
-          }
-
           List<Integer> newAssignedReplica = new ArrayList<>();
           if (partitionInfo.replicas().length < replicationFactor) {
             Set<String> currentOccupiedRack = new HashSet<>();
@@ -1014,6 +1019,7 @@ public class ClusterModel implements Serializable {
                 if (!newAssignedReplica.contains(brokerId)) {
                   newAssignedReplica.add(brokersByRack.get(rack).get(cursor));
                   // Create a new replica in the cluster model and populate its load from the leader replica.
+                  TopicPartition tp = new TopicPartition(topic, partitionInfo.partition());
                   Load load = partition(tp).leader().getFollowerLoadFromLeader();
                   createReplica(rack, brokerId, tp, partitionInfo.replicas().length, false, false, null, true);
                   setReplicaLoad(rack, brokerId, tp, load.loadByWindows(), load.windows());
@@ -1394,6 +1400,14 @@ public class ClusterModel implements Serializable {
                          _brokers.size(), _partitionsByTopicPartition.size(), _aliveBrokers.size());
   }
 
+  public Map<Broker, Integer> getNumLeadReplicasByBroker(String topic) {
+    return _numLeadReplicasByTopicByBroker.get(topic);
+  }
+
+  public Map<Rack, Integer> getNumLeadReplicasByRack(String topic) {
+    return _numLeadReplicasByTopicByRack.get(topic);
+  }
+
   private void refreshCapacity() {
     for (Resource r : Resource.cachedValues()) {
       double capacity = 0;
@@ -1402,5 +1416,29 @@ public class ClusterModel implements Serializable {
       }
       _clusterCapacity[r.id()] = capacity;
     }
+  }
+
+  private void decrementLeadReplicaCount(TopicPartition tp, Integer brokerId) {
+    Broker broker = broker(brokerId);
+
+    _numLeadReplicasByTopicByBroker.get(tp.topic()).compute(broker, (k, v) -> {
+      assert v != null;
+      return v - 1;
+    });
+    _numLeadReplicasByTopicByRack.get(tp.topic()).compute(broker.rack(), (k, v) -> {
+      assert v != null;
+      return v - 1;
+    });
+  }
+
+  private void incrementLeadReplicaCount(TopicPartition tp, Integer brokerId) {
+    Broker broker = broker(brokerId);
+
+    _numLeadReplicasByTopicByBroker
+            .computeIfAbsent(tp.topic(), t -> new HashMap<>())
+            .compute(broker, (k, v) -> v == null ? 1 : v + 1);
+    _numLeadReplicasByTopicByRack
+            .computeIfAbsent(tp.topic(), t -> new HashMap<>())
+            .compute(broker.rack(), (k, v) -> v == null ? 1 : v + 1);
   }
 }

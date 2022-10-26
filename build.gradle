@@ -10,6 +10,7 @@ plugins {
   id "com.github.ben-manes.versions" version "0.42.0"
   id "com.github.spotbugs" version "5.0.9" apply false
   id "checkstyle"
+  id 'us.datanerd.application' version "7.2.0"
 }
 
 group = 'com.linkedin.cruisecontrol'
@@ -53,6 +54,7 @@ allprojects {
   }
 
   apply plugin: 'com.github.ben-manes.versions'
+  apply plugin: 'us.datanerd.application'
 
   dependencyUpdates {
     revision="release"
@@ -159,9 +161,14 @@ subprojects {
 project(':cruise-control-core') {
   apply plugin: 'maven-publish'
   apply plugin: 'com.jfrog.artifactory'
+  apply plugin: 'us.datanerd.application'
 
   configurations {
     testOutput
+  }
+
+  application {
+    usingConscrypt = true
   }
 
   dependencies {
@@ -219,6 +226,11 @@ project(':cruise-control') {
   apply plugin: 'scala'
   apply plugin: 'maven-publish'
   apply plugin: 'com.jfrog.artifactory'
+  apply plugin: 'us.datanerd.application'
+
+  application {
+    usingConscrypt = true
+  }
 
   //needed because our java classes depend on scala classes, so must be compiled by scala
   sourceSets {
@@ -287,7 +299,7 @@ project(':cruise-control') {
     implementation 'com.google.code.findbugs:jsr305:3.0.2'
     implementation 'com.google.guava:guava:31.1-jre'
     // Temporary pin for vulnerability
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.12.6.1'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.4.2'
 
     testImplementation project(path: ':cruise-control-metrics-reporter', configuration: 'testOutput')
     testImplementation project(path: ':cruise-control-core', configuration: 'testOutput')
@@ -402,9 +414,14 @@ project(':cruise-control') {
 project(':cruise-control-metrics-reporter') {
   apply plugin: 'maven-publish'
   apply plugin: 'com.jfrog.artifactory'
+  apply plugin: 'us.datanerd.application'
 
   configurations {
     testOutput
+  }
+
+  application {
+    usingConscrypt = true
   }
 
   dependencies {
@@ -420,7 +437,7 @@ project(':cruise-control-metrics-reporter') {
     implementation "org.apache.kafka:kafka-clients:$kafkaVersion"
     implementation 'com.google.code.findbugs:jsr305:3.0.2'
     // Temporary pin for vulnerability
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.12.6.1'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.4.2'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.bouncycastle:bcpkix-jdk15on:1.70'
